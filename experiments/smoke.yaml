@@ -1,0 +1,15 @@
+# Minimal end-to-end smoke test using the tiny bundled instances.
+# Exercises both solvers on both variants.
+run_id: smoke
+seeds: [0]
+time_budget:
+  base_s: 1
+  per_node_ms: 0
+solvers: [pyvrp, ortools]
+datasets:
+  - variant: CVRP
+    instances:
+      - data/instances/X-n101-k25.vrp
+  - variant: VRPTW
+    instances:
+      - data/instances/C101.txt

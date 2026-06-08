@@ -1,0 +1,12 @@
+instance_name,variant,bks_value,rounding,source
+X-n101-k25,CVRP,27591,int,CVRPLIB (Uchoa et al. 2017)
+X-n106-k14,CVRP,26362,int,CVRPLIB (Uchoa et al. 2017)
+X-n110-k13,CVRP,14971,int,CVRPLIB (Uchoa et al. 2017)
+X-n115-k10,CVRP,12747,int,CVRPLIB (Uchoa et al. 2017)
+X-n120-k6,CVRP,13332,int,CVRPLIB (Uchoa et al. 2017)
+C101,VRPTW,827.3,float,Solomon (100-customer best-known)
+C102,VRPTW,827.3,float,Solomon (100-customer best-known)
+R101,VRPTW,1637.7,float,Solomon (100-customer best-known)
+R102,VRPTW,1466.6,float,Solomon (100-customer best-known)
+RC101,VRPTW,1619.8,float,Solomon (100-customer best-known)
+RC102,VRPTW,1457.4,float,Solomon (100-customer best-known)
