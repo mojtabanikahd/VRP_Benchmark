@@ -4,3 +4,5 @@ pyvrp>=0.9,<0.12
 ortools>=9.10,<10
 pyyaml>=6.0,<7
 pytest>=8.0,<9
+pandas>=2.0,<4
+pyvroom>=1.15,<2
