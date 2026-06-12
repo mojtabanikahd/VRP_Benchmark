@@ -1,0 +1,16 @@
+# Step 6 smoke test: all four solvers (pyvrp, ortools, vroom, vrpsolvereasy)
+# on both variants using tiny bundled test instances for rapid verification.
+run_id: vrpsolvereasy_smoke
+seeds: [0]
+time_budget:
+  base_s: 10
+  per_node_ms: 0
+results_dir: results
+solvers: [pyvrp, ortools, vroom, vrpsolvereasy]
+datasets:
+  - variant: CVRP
+    instances:
+      - tests/data/toy.vrp
+  - variant: VRPTW
+    instances:
+      - tests/data/toy_solomon.txt

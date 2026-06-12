@@ -31,10 +31,17 @@ def _make_vroom() -> Solver:
     return VroomSolver()
 
 
+def _make_vrpsolvereasy() -> Solver:
+    from vrpbench.solvers.vrpsolvereasy_solver import VRPSolverEasySolver
+
+    return VRPSolverEasySolver()
+
+
 SOLVERS: dict[str, "callable[[], Solver]"] = {
     "pyvrp": _make_pyvrp,
     "ortools": _make_ortools,
     "vroom": _make_vroom,
+    "vrpsolvereasy": _make_vrpsolvereasy,
 }
 
 
