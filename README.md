@@ -66,7 +66,20 @@ datasets:
 | `pyvrp` | Heuristic (LNS) | ✓ | ✓ | |
 | `ortools` | Heuristic (CP-SAT/LNS) | ✓ | ✓ | |
 | `vroom` | Heuristic (LNS) | ✓ | ✓ | Windows: numpy `uintc` workaround applied |
-| `vrpsolvereasy` | Exact (BCP / BaPCod) | ✓ | ✓ | Requires BaPCod binaries; ≤ 1022 nodes |
+| `vrpsolvereasy` | Exact (BCP / BaPCod) | ✓ | ✓ | Requires BaPCod binaries; ≤ 1022 nodes; needs long time budgets (see below) |
+
+### VRPSolverEasy time budget note
+
+`vrpsolvereasy` is a Branch-Cut-and-Price (BCP) exact solver, not a metaheuristic. Unlike
+PyVRP/OR-Tools/VROOM — which always produce a feasible solution quickly and then improve it —
+BCP must solve a sequence of LP relaxations before it finds its *first* integer-feasible
+solution. On 100+ node instances this can take minutes even with a fast MIP engine.
+
+With the default 10-second flat budget, expect most `vrpsolvereasy` cells to report
+`status=infeasible` (no feasible solution found in time), not a suboptimal route set.
+This is expected solver behavior, not a bug. For meaningful exact-solver results, set a
+much larger budget — e.g., `base_s: 300` or `per_node_ms: 500` — and restrict the instance
+set to smaller problems (≤ ~50 nodes) if wall-clock time is a concern.
 
 ## Datasets & BKS
 
