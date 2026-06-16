@@ -14,7 +14,7 @@ from pathlib import Path
 
 import yaml
 
-from vrpbench.core.instance import VARIANTS
+from vrpbench.core.instance import MDVRP, VARIANTS
 from vrpbench.datasets.loader import detect_format
 from vrpbench.solvers import SOLVERS, get_solver
 
@@ -103,12 +103,15 @@ def _validate(cfg: ExperimentConfig) -> None:
             p = Path(inst_path)
             if not p.exists():
                 raise ValueError(f"config: instance file not found: {inst_path}")
-            _, detected = detect_format(inst_path)
-            if detected != group.variant:
-                raise ValueError(
-                    f"config: {inst_path} looks like {detected} "
-                    f"but is declared under {group.variant}"
-                )
+            # MDVRP shares the .txt extension with Solomon VRPTW, so it cannot be
+            # inferred from the file; the declared variant is authoritative.
+            if group.variant != MDVRP:
+                _, detected = detect_format(inst_path)
+                if detected != group.variant:
+                    raise ValueError(
+                        f"config: {inst_path} looks like {detected} "
+                        f"but is declared under {group.variant}"
+                    )
         # Every chosen solver must support this group's variant.
         for name in cfg.solvers:
             if group.variant not in capabilities[name]:

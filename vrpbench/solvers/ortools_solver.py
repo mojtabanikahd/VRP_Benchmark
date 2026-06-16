@@ -18,16 +18,16 @@ import time
 
 import numpy as np
 
-from vrpbench.core.instance import CVRP, VRPTW, Instance
+from vrpbench.core.instance import CVRP, MDVRP, VRPTW, Instance
 from vrpbench.core.solution import Solution
-from vrpbench.solvers.base import SolverError
+from vrpbench.solvers.base import SolverError, mdvrp_vehicles_per_depot
 
-_SCALE = {CVRP: 1, VRPTW: 10}
+_SCALE = {CVRP: 1, VRPTW: 10, MDVRP: 1}
 
 
 class OrToolsSolver:
     name = "ortools"
-    supported_variants = (CVRP, VRPTW)
+    supported_variants = (CVRP, VRPTW, MDVRP)
 
     def solve(self, instance: Instance, *, time_budget_s: float, seed: int) -> Solution:
         from ortools.constraint_solver import pywrapcp, routing_enums_pb2
@@ -40,9 +40,21 @@ class OrToolsSolver:
         depot = instance.depot
         dist = np.rint(instance.distance * scale).astype(np.int64)
         demands = instance.demands.astype(np.int64)
-        num_vehicles = _vehicle_count(instance)
 
-        manager = pywrapcp.RoutingIndexManager(n, num_vehicles, depot)
+        if instance.variant == MDVRP:
+            # One block of vehicles per depot, each fixed to start and end at its
+            # depot (native multi-depot). A generous per-depot fleet (one vehicle
+            # per customer) guarantees a feasible assignment exists regardless of
+            # how the search distributes customers across depots.
+            depot_indices = instance.depot_indices
+            vehicles_per_depot = mdvrp_vehicles_per_depot(instance)
+            starts = [d for d in depot_indices for _ in range(vehicles_per_depot)]
+            ends = list(starts)
+            num_vehicles = len(starts)
+            manager = pywrapcp.RoutingIndexManager(n, num_vehicles, starts, ends)
+        else:
+            num_vehicles = _vehicle_count(instance)
+            manager = pywrapcp.RoutingIndexManager(n, num_vehicles, depot)
         routing = pywrapcp.RoutingModel(manager)
 
         def distance_cb(from_index: int, to_index: int) -> int:
@@ -81,12 +93,13 @@ class OrToolsSolver:
         if solution is None:
             raise SolverError("OR-Tools found no solution within the time budget")
 
-        routes = _extract_routes(routing, manager, solution, num_vehicles)
+        routes, route_depots = _extract_routes(routing, manager, solution, num_vehicles)
         return Solution(
             routes=routes,
             objective=float(solution.ObjectiveValue()) / scale,
             feasible=True,  # re-verified independently by the evaluation layer
             runtime_s=runtime_s,
+            route_depots=route_depots if instance.variant == MDVRP else [],
         )
 
     def version(self) -> str:
@@ -137,10 +150,15 @@ def _vehicle_count(instance: Instance) -> int:
     return max(1, declared, min_by_capacity)
 
 
-def _extract_routes(routing, manager, solution, num_vehicles) -> list[list[int]]:
+def _extract_routes(
+    routing, manager, solution, num_vehicles
+) -> tuple[list[list[int]], list[int]]:
+    """Return (routes, route_depots); route_depots[i] is route i's start node."""
     routes: list[list[int]] = []
+    route_depots: list[int] = []
     for v in range(num_vehicles):
         index = routing.Start(v)
+        depot_node = manager.IndexToNode(index)
         route: list[int] = []
         while not routing.IsEnd(index):
             if not routing.IsStart(index):
@@ -148,4 +166,5 @@ def _extract_routes(routing, manager, solution, num_vehicles) -> list[list[int]]
             index = solution.Value(routing.NextVar(index))
         if route:
             routes.append(route)
-    return routes
+            route_depots.append(depot_node)
+    return routes, route_depots

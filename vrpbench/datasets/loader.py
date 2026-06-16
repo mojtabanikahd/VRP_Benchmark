@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 import vrplib
 
-from vrpbench.core.instance import CVRP, VRPTW, Instance
+from vrpbench.core.instance import CVRP, MDVRP, VRPTW, Instance
 
 # Map file extension -> (vrplib format, our variant).
 _EXT_FORMAT = {
@@ -44,7 +44,14 @@ def load(path: str | os.PathLike, variant: str | None = None) -> Instance:
 
     ``variant`` may be passed to override extension-based detection; it must then
     match the detected variant (guards against mislabelled config entries).
+
+    MDVRP files share the ``.txt`` extension with Solomon VRPTW, so MDVRP cannot
+    be inferred from the extension — it must be requested explicitly via
+    ``variant=MDVRP``, which dispatches to the Cordeau parser below.
     """
+    if variant == MDVRP:
+        return _load_cordeau_mdvrp(path)
+
     fmt, detected = detect_format(path)
     if variant is not None and variant != detected:
         raise ValueError(
@@ -91,3 +98,84 @@ def _depot_index(raw: dict) -> int:
         return 0
     arr = np.atleast_1d(np.asarray(depot, dtype=int))
     return int(arr[0])
+
+
+def _load_cordeau_mdvrp(path: str | os.PathLike) -> Instance:
+    """Parse a Cordeau MDVRP instance (``http://neumann.hec.ca/chairedistributique``).
+
+    Layout (whitespace-separated; see CLAUDE.md §1):
+
+        type  m  n  t              # type (ignore), m vehicles/depot (ignore),
+                                   # n customers, t depots
+        D_i Q_i        x t         # per depot: max route duration (IGNORED), capacity
+        id x y svc dem ...         # n customer lines; trailing PVRP fields dropped
+        id x y ...     x t         # t depot coordinate lines (at end of file)
+
+    The ``t`` depots are placed first at internal indices ``0 .. t-1`` and the
+    ``n`` customers follow at ``t .. t+n-1`` (so the result matches the rest of the
+    codebase, which expects depots before customers). Coordinates are read as
+    floats, covering both the integer ``old`` and float ``new`` instance sets. The
+    distance matrix is the full Euclidean matrix over all nodes (authoritative).
+    Max route duration ``D`` is ignored (capacity-constrained MDVRP).
+    """
+    tokens = iter(Path(path).read_text(encoding="utf-8").split())
+
+    next(tokens)  # type (e.g. 2 = MDVRP) — ignored
+    next(tokens)  # m = vehicles per depot — ignored (generous fleet decided by solvers)
+    num_customers = int(next(tokens))
+    num_depots = int(next(tokens))
+
+    capacity = None
+    for _ in range(num_depots):
+        next(tokens)  # D = max route duration — ignored
+        cap = int(next(tokens))  # Q = vehicle capacity (homogeneous across depots)
+        capacity = cap if capacity is None else capacity
+
+    # Customer lines: id, x, y, service (ignored), demand, then 6 PVRP tokens (dropped).
+    cust_coords: list[tuple[float, float]] = []
+    cust_demands: list[int] = []
+    for _ in range(num_customers):
+        next(tokens)  # id (file-local, ignored)
+        cx = float(next(tokens))
+        cy = float(next(tokens))
+        next(tokens)  # service time — ignored (no time windows in this MDVRP build)
+        cust_demands.append(int(float(next(tokens))))
+        cust_coords.append((cx, cy))
+        for _ in range(6):  # PVRP visit-frequency / day-combination metadata
+            next(tokens)
+
+    # Depot coordinate lines: id, x, y, then 4 trailing tokens (dropped).
+    depot_coords: list[tuple[float, float]] = []
+    for _ in range(num_depots):
+        next(tokens)  # id (file-local, ignored)
+        dx = float(next(tokens))
+        dy = float(next(tokens))
+        depot_coords.append((dx, dy))
+        for _ in range(4):
+            next(tokens)
+
+    # Depots first (indices 0..t-1), then customers (t..t+n-1).
+    coords = np.asarray(depot_coords + cust_coords, dtype=float)
+    n = coords.shape[0]
+    demands = np.asarray([0] * num_depots + cust_demands, dtype=int)
+
+    # Euclidean distances rounded to the nearest integer — the same EUC_2D
+    # convention vrplib applies to CVRP. The solvers all optimise over integers
+    # (scale 1), so making the authoritative matrix integer keeps the four solvers
+    # byte-identical and the evaluator's re-score matches (obj_mismatch ~ 0).
+    diff = coords[:, None, :] - coords[None, :, :]
+    distance = np.rint(np.sqrt((diff**2).sum(axis=2)))
+
+    return Instance(
+        name=Path(path).stem,
+        variant=MDVRP,
+        num_nodes=n,
+        coords=coords,
+        demands=demands,
+        capacity=int(capacity),
+        distance=distance,
+        depot=0,
+        depot_indices=tuple(range(num_depots)),
+        num_vehicles=None,
+        source_path=str(path),
+    )

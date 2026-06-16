@@ -1,11 +1,12 @@
 # vrpbench
 
-A fast, reproducible benchmarking harness for **CVRP** and **VRPTW** that compares
-complete solvers on *final solution quality + runtime* only.
+A fast, reproducible benchmarking harness for **CVRP**, **VRPTW** and **MDVRP**
+(multi-depot) that compares complete solvers on *final solution quality + runtime* only.
 
-Bundled solvers: **PyVRP** (CVRP + VRPTW), **OR-Tools** (CVRP + VRPTW), **VROOM**
-(CVRP + VRPTW), and **VRPSolverEasy** (CVRP + VRPTW — exact BCP via BaPCod). A future
-custom solver plugs in as one adapter file + one registry entry.
+Bundled solvers: **PyVRP** (CVRP + VRPTW + MDVRP), **OR-Tools** (CVRP + VRPTW + MDVRP),
+**VROOM** (CVRP + VRPTW + MDVRP), and **VRPSolverEasy** (CVRP + VRPTW — exact BCP via
+BaPCod; MDVRP not supported). A future custom solver plugs in as one adapter file + one
+registry entry.
 
 ## Install
 
@@ -23,6 +24,9 @@ python -m venv .venv
 ```powershell
 # Quick smoke test — PyVRP + OR-Tools on one CVRP and one VRPTW instance
 .venv\Scripts\python.exe -m vrpbench.cli --config experiments/smoke.yaml
+
+# MDVRP smoke — PyVRP + OR-Tools + VROOM on small Cordeau multi-depot instances
+.venv\Scripts\python.exe -m vrpbench.cli --config experiments/mdvrp_smoke.yaml
 
 # Full benchmark — all four solvers on the standard CVRP X-set + Solomon VRPTW set
 .venv\Scripts\python.exe -m vrpbench.cli --config experiments/benchmark.yaml
@@ -47,26 +51,38 @@ datasets:
   - variant: VRPTW
     instances:
       - data/instances/Solomon/C101.txt
+  - variant: MDVRP            # multi-depot; must be declared explicitly (see note)
+    instances:
+      - data/instances/MDVRP/old/p01.txt
 ```
+
+> **MDVRP files share the `.txt` extension with Solomon VRPTW**, so the variant cannot be
+> inferred from the filename — declare `variant: MDVRP` and the loader uses the Cordeau
+> parser. `vrpsolvereasy` cannot be listed under an MDVRP group (config validation rejects
+> it with a clear error).
 
 ## Layout
 
 | Module | Responsibility |
 |---|---|
 | `vrpbench/core` | `Instance`, `Solution`, independent `evaluate` (objective recompute, feasibility, gap) |
-| `vrpbench/datasets` | `loader` (CVRPLIB `.vrp` + Solomon/GH `.txt` via `vrplib`), curated `bks` table |
+| `vrpbench/datasets` | `loader` (CVRPLIB `.vrp` + Solomon/GH `.txt` via `vrplib`, Cordeau MDVRP `.txt`), curated `bks` table |
 | `vrpbench/solvers` | `Solver` protocol + `pyvrp` / `ortools` / `vroom` / `vrpsolvereasy` adapters + `SOLVERS` registry |
 | `vrpbench/runner` | YAML `config` + execution loop |
 | `vrpbench/results` | incremental CSV store (+ optional per-run JSON) |
 
 ## Solvers
 
-| Name | Type | CVRP | VRPTW | Notes |
-|---|---|---|---|---|
-| `pyvrp` | Heuristic (LNS) | ✓ | ✓ | |
-| `ortools` | Heuristic (CP-SAT/LNS) | ✓ | ✓ | |
-| `vroom` | Heuristic (LNS) | ✓ | ✓ | Windows: numpy `uintc` workaround applied |
-| `vrpsolvereasy` | Exact (BCP / BaPCod) | ✓ | ✓ | Requires BaPCod binaries; ≤ 1022 nodes; needs long time budgets (see below) |
+| Name | Type | CVRP | VRPTW | MDVRP | Notes |
+|---|---|---|---|---|---|
+| `pyvrp` | Heuristic (LNS) | ✓ | ✓ | ✓ | |
+| `ortools` | Heuristic (CP-SAT/LNS) | ✓ | ✓ | ✓ | |
+| `vroom` | Heuristic (LNS) | ✓ | ✓ | ✓ | Windows: numpy `uintc` workaround applied |
+| `vrpsolvereasy` | Exact (BCP / BaPCod) | ✓ | ✓ | ✗ | Requires BaPCod binaries; ≤ 1022 nodes; needs long time budgets (see below) |
+
+All three heuristic solvers handle multiple depots **natively** (PyVRP per-depot vehicle
+types, OR-Tools per-vehicle `starts`/`ends`, VROOM per-vehicle `start`/`end`). MDVRP uses
+classic *open* depot assignment — the solver chooses which depot serves each customer.
 
 ### VRPSolverEasy time budget note
 
@@ -89,18 +105,27 @@ Place instance files under `data/instances/`:
   distances). 150+ instances with BKS from Uchoa et al. 2017.
 - **VRPTW** — Solomon benchmark (`data/instances/Solomon/`, `.txt`, float Euclidean
   distances). Complete 100-customer set (C1/C2/R1/R2/RC1/RC2 classes).
+- **MDVRP** — Cordeau benchmark (`data/instances/MDVRP/`, `.txt`,
+  [source](http://neumann.hec.ca/chairedistributique/data/)): `old/p01..p21` (integer
+  coords) and `new/pr01..pr10` (float coords). Euclidean distances are nearest-integer
+  rounded (matching the CVRP convention). The per-depot max-route-duration field is
+  ignored (solved as capacity-constrained MDVRP); per-customer PVRP visit-frequency fields
+  are discarded.
 
 `data/bks.csv` (`instance_name, variant, bks_value, rounding, source`) holds curated
 best-known values for gap computation. The `rounding` column documents the distance
 convention each BKS was computed under (`int` for CVRP, `float`/1-decimal for VRPTW),
-kept consistent with the loader. Missing BKS → `gap_pct` is left blank, not an error.
+kept consistent with the loader. Missing BKS → `gap_pct` is left blank, not an error
+(no MDVRP BKS are bundled yet, so MDVRP rows report a blank gap).
 
 ## Correctness model
 
 Every solution is **independently re-scored** against the instance's authoritative
-distance matrix and re-checked for feasibility (visiting, capacity, time windows).
-The `obj_mismatch` column flags any disagreement between a solver's reported objective
-and our recomputation (≈0 for CVRP; tiny for VRPTW due to solver integer rounding).
+distance matrix and re-checked for feasibility (visiting, capacity, time windows, and —
+for MDVRP — that each route names a valid depot it starts and ends at). The `obj_mismatch`
+column flags any disagreement between a solver's reported objective and our recomputation
+(≈0 for CVRP and MDVRP, which use integer distances; tiny for VRPTW due to solver integer
+rounding). For MDVRP each route is anchored at its own depot when recomputing the objective.
 
 ## Tests
 

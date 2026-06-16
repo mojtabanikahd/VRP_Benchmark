@@ -30,17 +30,17 @@ from datetime import timedelta
 
 import numpy as np
 
-from vrpbench.core.instance import CVRP, VRPTW, Instance
+from vrpbench.core.instance import CVRP, MDVRP, VRPTW, Instance
 from vrpbench.core.solution import Solution
-from vrpbench.solvers.base import SolverError
+from vrpbench.solvers.base import SolverError, mdvrp_vehicles_per_depot
 
-_SCALE = {CVRP: 1, VRPTW: 10}
+_SCALE = {CVRP: 1, VRPTW: 10, MDVRP: 1}
 _PROFILE = "car"
 
 
 class VroomSolver:
     name = "vroom"
-    supported_variants = (CVRP, VRPTW)
+    supported_variants = (CVRP, VRPTW, MDVRP)
 
     def __init__(self, exploration_level: int = 5, nb_threads: int = 1) -> None:
         """Engine knobs (kept off ``solve``'s signature to stay interchangeable).
@@ -64,7 +64,7 @@ class VroomSolver:
             raise SolverError(f"VroomSolver does not support {instance.variant!r}")
 
         scale = _SCALE[instance.variant]
-        problem = _build_input(instance, scale)
+        problem, vehicle_depot = _build_input(instance, scale)
 
         start = time.perf_counter()
         try:
@@ -77,7 +77,7 @@ class VroomSolver:
             raise SolverError(f"VROOM solve failed: {exc}") from exc
         runtime_s = time.perf_counter() - start
 
-        return _to_solution(result, scale, runtime_s)
+        return _to_solution(result, scale, runtime_s, vehicle_depot)
 
     def version(self) -> str:
         """Return the pyvroom package version (recorded for reproducibility)."""
@@ -89,7 +89,9 @@ class VroomSolver:
             return "unknown"
 
 
-def _to_solution(result, scale: int, runtime_s: float) -> Solution:
+def _to_solution(
+    result, scale: int, runtime_s: float, vehicle_depot: dict[int, int] | None = None
+) -> Solution:
     """Convert a VROOM solution into our canonical :class:`Solution`.
 
     ``result.routes`` is a per-step ``pandas.DataFrame``; we group by
@@ -97,20 +99,27 @@ def _to_solution(result, scale: int, runtime_s: float) -> Solution:
     (== our customer index) into one list per non-empty route. ``summary.cost`` is
     the scaled distance; descaling yields VROOM's own objective claim. Any
     unassigned job marks the solution infeasible (the evaluator re-verifies).
+
+    For MDVRP, ``vehicle_depot`` maps each vehicle id to its (fixed) depot node, so
+    each non-empty route records the depot it starts and ends at.
     """
     df = result.routes
     routes: list[list[int]] = []
+    route_depots: list[int] = []
     for vehicle_id in df["vehicle_id"].unique():
         steps = df[df["vehicle_id"] == vehicle_id]
         route = [int(i) for i in steps.loc[steps["type"] == "job", "id"]]
         if route:
             routes.append(route)
+            if vehicle_depot is not None:
+                route_depots.append(int(vehicle_depot[int(vehicle_id)]))
 
     return Solution(
         routes=routes,
         objective=float(result.summary.cost) / scale,
         feasible=int(result.summary.unassigned) == 0,
         runtime_s=runtime_s,
+        route_depots=route_depots if vehicle_depot is not None else [],
     )
 
 
@@ -131,7 +140,11 @@ def _vroom_matrix(matrix_int: np.ndarray):
 
 
 def _build_input(instance: Instance, scale: int):
-    """Translate an :class:`Instance` into a ``vroom.Input`` (CVRP or VRPTW).
+    """Translate an :class:`Instance` into a ``vroom.Input`` (CVRP, VRPTW or MDVRP).
+
+    Returns ``(problem, vehicle_depot)``; ``vehicle_depot`` is ``None`` for the
+    single-depot variants and, for MDVRP, maps each vehicle id to its fixed depot
+    node (used to recover per-route depots from the solution).
 
     The authoritative distance matrix, scaled and rounded to ints, is fed as
     VROOM's duration matrix (cost objective and, for VRPTW, the travel-time
@@ -151,6 +164,9 @@ def _build_input(instance: Instance, scale: int):
 
     problem = vroom.Input()
     problem.set_durations_matrix(_PROFILE, _vroom_matrix(dist_int))
+
+    if instance.variant == MDVRP:
+        return _build_mdvrp_input(vroom, problem, instance)
 
     is_vrptw = instance.variant == VRPTW
     if is_vrptw:
@@ -194,4 +210,39 @@ def _build_input(instance: Instance, scale: int):
             kwargs["time_window"] = depot_tw
         problem.add_vehicle(vroom.Vehicle(**kwargs))
 
-    return problem
+    return problem, None
+
+
+def _build_mdvrp_input(vroom, problem, instance: Instance):
+    """Add MDVRP jobs and per-depot vehicles to ``problem``; return the map too.
+
+    Customers become jobs (``id == location ==`` customer index); each depot gets a
+    block of vehicles fixed to start and end at that depot (native multi-depot via
+    per-vehicle ``start``/``end``). The generous-but-bounded per-depot fleet (see
+    ``mdvrp_vehicles_per_depot``) keeps a feasible assignment available for any way
+    VROOM spreads customers across depots. ``vehicle_depot`` records each vehicle's
+    depot so per-route depots can be recovered from the solution.
+    """
+    demands = instance.demands
+
+    for i in instance.customers:
+        problem.add_job(vroom.Job(id=i, location=i, delivery=[int(demands[i])]))
+
+    vehicles_per_depot = mdvrp_vehicles_per_depot(instance)
+    vehicle_depot: dict[int, int] = {}
+    vid = 0
+    for d in instance.depot_indices:
+        for _ in range(vehicles_per_depot):
+            problem.add_vehicle(
+                vroom.Vehicle(
+                    id=vid,
+                    start=int(d),
+                    end=int(d),
+                    profile=_PROFILE,
+                    capacity=[int(instance.capacity)],
+                )
+            )
+            vehicle_depot[vid] = int(d)
+            vid += 1
+
+    return problem, vehicle_depot

@@ -3,6 +3,10 @@
 Routes are in canonical form: each route is an ordered list of *customer*
 indices, with the depot implied at both ends (not stored). The evaluation layer
 re-inserts the depot when recomputing the objective.
+
+For MDVRP, ``route_depots`` runs parallel to ``routes`` and names the depot index
+each route starts and ends at. It is empty for single-depot variants (CVRP/VRPTW),
+where the depot is always ``instance.depot``.
 """
 
 from __future__ import annotations
@@ -17,6 +21,8 @@ class Solution:
     feasible: bool  # solver's own claim; re-verified independently
     runtime_s: float  # wall-clock seconds spent inside solve()
     num_vehicles: int = field(default=0)  # number of non-empty routes
+    # MDVRP only: depot index per route (parallel to ``routes``); empty otherwise.
+    route_depots: list[int] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if self.num_vehicles == 0 and self.routes:

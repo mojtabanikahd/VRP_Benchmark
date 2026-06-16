@@ -1,0 +1,14 @@
+# MDVRP smoke: the three multi-depot solvers on a couple of small Cordeau
+# instances, tiny budget. VRPSolverEasy is excluded from MDVRP (see CLAUDE.md).
+run_id: mdvrp_smoke
+seeds: [0]
+time_budget:
+  base_s: 5
+  per_node_ms: 0
+results_dir: results
+solvers: [pyvrp, ortools, vroom]
+datasets:
+  - variant: MDVRP
+    instances:
+      - data/instances/MDVRP/old/p01.txt
+      - data/instances/MDVRP/old/p02.txt

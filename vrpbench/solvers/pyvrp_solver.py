@@ -19,16 +19,16 @@ import time
 
 import numpy as np
 
-from vrpbench.core.instance import CVRP, VRPTW, Instance
+from vrpbench.core.instance import CVRP, MDVRP, VRPTW, Instance
 from vrpbench.core.solution import Solution
-from vrpbench.solvers.base import SolverError
+from vrpbench.solvers.base import SolverError, mdvrp_vehicles_per_depot
 
-_SCALE = {CVRP: 1, VRPTW: 10}
+_SCALE = {CVRP: 1, VRPTW: 10, MDVRP: 1}
 
 
 class PyVRPSolver:
     name = "pyvrp"
-    supported_variants = (CVRP, VRPTW)
+    supported_variants = (CVRP, VRPTW, MDVRP)
 
     def solve(self, instance: Instance, *, time_budget_s: float, seed: int) -> Solution:
         import pyvrp
@@ -48,13 +48,24 @@ class PyVRPSolver:
         )
         runtime_s = time.perf_counter() - start
 
-        routes = [list(r.visits()) for r in result.best.routes() if len(r.visits()) > 0]
+        # PyVRP location indices match our node indices (depots first, then
+        # clients in insertion order), so visits() are our customer indices and
+        # start_depot() is our depot index.
+        routes: list[list[int]] = []
+        route_depots: list[int] = []
+        for r in result.best.routes():
+            visits = list(r.visits())
+            if not visits:
+                continue
+            routes.append(visits)
+            route_depots.append(int(r.start_depot()))
 
         return Solution(
             routes=routes,
             objective=result.cost() / scale,
             feasible=result.is_feasible(),
             runtime_s=runtime_s,
+            route_depots=route_depots if instance.variant == MDVRP else [],
         )
 
     def version(self) -> str:
@@ -74,6 +85,9 @@ def _build_data(pyvrp, instance: Instance, scale: int):
     demands = instance.demands
 
     dist_int = np.rint(instance.distance * scale).astype(np.int64)
+
+    if instance.variant == MDVRP:
+        return _build_mdvrp_data(pyvrp, instance, dist_int)
 
     if instance.variant == VRPTW:
         tw = instance.time_windows
@@ -129,6 +143,55 @@ def _build_data(pyvrp, instance: Instance, scale: int):
         clients=clients,
         depots=[depot_obj],
         vehicle_types=[vehicle_type],
+        distance_matrices=[dist_int],
+        duration_matrices=[duration_int],
+    )
+
+
+def _build_mdvrp_data(pyvrp, instance: Instance, dist_int):
+    """MDVRP ProblemData: one Depot per depot index, one VehicleType per depot.
+
+    Depots occupy location indices ``0..t-1`` and clients follow at ``t..n-1`` in
+    insertion order, exactly matching our node indexing — so the distance matrix is
+    used as-is and ``Route.visits()`` / ``Route.start_depot()`` map straight back.
+    Open depot assignment is PyVRP's default: a client may be served by any vehicle
+    type, so the search chooses the depot for each customer.
+    """
+    n = instance.num_nodes
+    coords = instance.coords
+    demands = instance.demands
+    depot_indices = instance.depot_indices
+
+    depots = [
+        pyvrp.Depot(x=float(coords[d, 0]), y=float(coords[d, 1])) for d in depot_indices
+    ]
+    clients = [
+        pyvrp.Client(
+            x=float(coords[i, 0]),
+            y=float(coords[i, 1]),
+            delivery=[int(demands[i])],
+        )
+        for i in instance.customers
+    ]
+
+    # Generous-but-bounded per-depot fleet (see mdvrp_vehicles_per_depot); the
+    # distance objective drives PyVRP to use as few as it needs.
+    num_per_depot = mdvrp_vehicles_per_depot(instance)
+    vehicle_types = [
+        pyvrp.VehicleType(
+            num_available=num_per_depot,
+            capacity=[int(instance.capacity)],
+            start_depot=d,
+            end_depot=d,
+        )
+        for d in range(len(depot_indices))
+    ]
+
+    duration_int = np.zeros((n, n), dtype=np.int64)
+    return pyvrp.ProblemData(
+        clients=clients,
+        depots=depots,
+        vehicle_types=vehicle_types,
         distance_matrices=[dist_int],
         duration_matrices=[duration_int],
     )

@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from vrpbench.core import evaluate
+from vrpbench.core.instance import MDVRP
 from vrpbench.datasets import loader
 from vrpbench.solvers.pyvrp_solver import PyVRPSolver
 
@@ -31,6 +32,19 @@ def test_pyvrp_solves_vrptw():
     ev = evaluate.verify(inst, sol)
     assert ev.feasible, ev.violations
     assert ev.objective > 0
+
+
+def test_pyvrp_solves_mdvrp():
+    inst = loader.load(DATA / "toy_mdvrp.txt", variant=MDVRP)
+    sol = PyVRPSolver().solve(inst, time_budget_s=2.0, seed=0)
+    ev = evaluate.verify(inst, sol)
+    assert ev.feasible, ev.violations
+    # Optimal splits the two clusters across the two depots: 3 + 3 = 6.
+    assert ev.objective == pytest.approx(6.0)
+    assert ev.obj_mismatch == pytest.approx(0.0, abs=1e-6)
+    assert len(sol.route_depots) == len(sol.routes)
+    assert sorted(set(sol.route_depots)) == [0, 1]
+    assert all(d in inst.depot_indices for d in sol.route_depots)
 
 
 def test_pyvrp_deterministic_per_seed():

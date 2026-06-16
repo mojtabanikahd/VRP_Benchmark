@@ -1,368 +1,236 @@
-# Plan: Add a `pyvroom` (VROOM) solver backend to vrpbench
+# Plan: Add the **MDVRP** (Multi-Depot VRP) variant to vrpbench
 
 ## Context
 
-The benchmark compares *complete* VRP solvers on CVRP and VRPTW. Two adapters
-exist today — [`PyVRPSolver`](vrpbench/solvers/pyvrp_solver.py) and
-[`OrToolsSolver`](vrpbench/solvers/ortools_solver.py) — both satisfying the
-`Solver` protocol in [base.py](vrpbench/solvers/base.py). We want to add VROOM
-(via the `pyvroom` package, imported as `vroom`) as a third interchangeable
-solver so research comparisons include a fast, heuristic, open-source engine.
+The benchmark currently compares four complete VRP solvers — `pyvrp`, `ortools`, `vroom`,
+`vrpsolvereasy` — on two variants: **CVRP** and **VRPTW**. We add a third interchangeable
+variant, **MDVRP** (Multi-Depot VRP), using the classic Cordeau instances from
+`http://neumann.hec.ca/chairedistributique/data/` (format described in `README.TXT`), already
+present under `data/instances/MDVRP/old/` (`p01..p21`, integer coords) and
+`data/instances/MDVRP/new/` (`pr01..pr10`, float coords).
 
-The architecture is already designed for exactly this: adapters are self-contained,
-registered by name in one dict ([solvers/__init__.py](vrpbench/solvers/__init__.py)),
-and every consumer (runner, config validation, CLI) is driven dynamically off
-`SOLVERS` and each solver's `supported_variants`. **No abstraction layer, data
-model, or unrelated module needs to change.** The work is: one new adapter file,
-one registry entry, one requirements line, one test file.
+**Why this scope.** A deeper read of the installed libraries shows that **all four underlying
+engines support multi-depot natively** — it is pure configuration, no problem transformation:
 
-**Confirmed decisions:**
-- **Time budget:** pyvroom 1.15.2's `solve()` signature is
-  `solve(exploration_level, nb_threads=4, timeout: timedelta|None=None, depth=None)`
-  — it *does* accept a wall-clock `timeout`. The adapter **honors `time_budget_s`**
-  via `timeout=timedelta(seconds=time_budget_s)`, with a high `exploration_level`
-  (default **5**) and `nb_threads=1` (determinism). This keeps vroom comparable to
-  OR-Tools/PyVRP under the same shared budget. `seed` is accepted but ignored
-  (VROOM is deterministic at `nb_threads=1`), mirroring `OrToolsSolver`.
-- **Registry name:** `vroom`.
-- **Windows compatibility (RESOLVED):** `set_durations_matrix` raises
-  `Incompatible buffer format!` on Windows because pyvroom hard-casts to numpy
-  `uint32` (format `'L'` on MSVC) while `_vroom.Matrix` expects `'I'`. The adapter
-  bypasses this by building `_vroom.Matrix(np.ascontiguousarray(M, dtype=np.uintc))`
-  itself and passing that object. Verified end-to-end on Python 3.12.8 / pyvroom
-  1.15.2. Full root-cause + upstream issue #85 in
-  [PYVROOM_COMPATIBILITY_ISSUE.md](PYVROOM_COMPATIBILITY_ISSUE.md).
-
----
-
-## 1. Feasibility Assessment
-
-VROOM is a complete heuristic VRP solver and natively models both target variants.
-
-### CVRP
-- **Supported:** single depot; per-vehicle capacity (`capacity=[c]`); per-customer
-  demand as a delivery amount (`delivery=[d]`); a custom integer cost/duration
-  matrix as the routing objective; arbitrary fleet size; objective =
-  minimize total travel cost (we feed the distance matrix as that cost).
-- **Unsupported / not needed:** multiple depots, heterogeneous capacities,
-  pickups, skills, priorities — none used by our `Instance`.
-- **Assumptions/limitations:** VROOM optimises over **integers** (matrix, amounts).
-  We reuse the existing per-variant scale (`CVRP -> 1`, the matrix is already
-  integer-valued in CVRPLIB). If the chosen fleet is too small VROOM does *not*
-  error — it returns a solution with some jobs **unassigned**, which we must
-  detect and treat as infeasible.
-
-### VRPTW
-- **Supported:** customer time windows (`time_windows=[[e, l]]`), service
-  durations (`service=s`), vehicle/depot time window (`time_window=[e, l]`).
-  VROOM uses the **duration matrix** both as the cost objective *and* for arrival-
-  time computation. Because Solomon/GH travel time == distance, a single scaled
-  matrix correctly serves both roles — exactly the assumption the PyVRP and
-  OR-Tools adapters already make.
-- **Unsupported / not needed:** multiple time windows per customer (we have one),
-  driver breaks, max route duration/distance limits — none used.
-- **Assumptions/limitations:** integer times -> reuse scale `VRPTW -> 10` (DIMACS
-  convention, matching PyVRP, OR-Tools, and the 1-decimal Solomon/GH BKS).
-  Waiting before a window opens is allowed by VROOM (consistent with our
-  evaluator's `_check_time_windows`). VROOM minimises total **duration** (= our
-  scaled distance), so its objective aligns with the benchmark's distance gap.
-
-**Conclusion:** both variants are fully supported with the same scaling and
-matrix conventions already in the codebase. The only genuine mismatch is the
-time-budget knob (handled by the confirmed fixed-exploration policy).
-
----
-
-## 2. Architecture Impact
-
-Minimum changes — additive only.
-
-**New module (1 file):**
-- [vrpbench/solvers/vroom_solver.py](vrpbench/solvers/vroom_solver.py) — the
-  `VroomSolver` adapter implementing the `Solver` protocol.
-
-**Modified modules (2 files, one line each):**
-- [vrpbench/solvers/__init__.py](vrpbench/solvers/__init__.py) — add a
-  `_make_vroom()` lazy factory and a `"vroom"` entry in `SOLVERS`.
-- [requirements.txt](requirements.txt) — add `pyvroom` (and `pandas`, see §4 note).
-
-**New test (1 file):**
-- `tests/test_vroom_solver.py` — mirrors
-  [tests/test_pyvrp_solver.py](tests/test_pyvrp_solver.py).
-
-**Explicitly NOT changed (interfaces are sufficient):**
-- `Solver` protocol — unchanged; `VroomSolver` satisfies it as-is.
-- `Instance` / `Solution` — reused verbatim; no new fields, no new data model.
-- [runner/run.py](vrpbench/runner/run.py) — already iterates `cfg.solvers` and
-  calls `get_solver`; picks up `vroom` for free.
-- [runner/config.py](vrpbench/runner/config.py) — validation reads `SOLVERS` and
-  `supported_variants` dynamically; the new solver is accepted with no edit.
-- [cli.py](vrpbench/cli.py), [core/evaluate.py](vrpbench/core/evaluate.py),
-  [results/store.py](vrpbench/results/store.py),
-  [datasets/loader.py](vrpbench/datasets/loader.py) — untouched.
-
----
-
-## 3. Data Mapping (`Instance` -> VROOM)
-
-VROOM is matrix-indexed: when a custom matrix is supplied, vehicles reference
-matrix rows via `start`/`end` indices and jobs via a `location` index. We keep
-the mapping trivial by setting each job's `id` **and** `location` to its node
-index, so solution job-ids come back as our customer indices directly.
-
-| `Instance` field | VROOM concept | Conversion |
+| Solver | Native multi-depot mechanism (verified) | In MDVRP scope? |
 |---|---|---|
-| `depot` (default 0) | `Vehicle.start` / `Vehicle.end` | pass the depot node index (VROOM supports any index; no depot==0 restriction needed) |
-| customers `1..n-1` | `Job` per customer | `vroom.Job(id=i, location=i, ...)` |
-| `coords` | — | **not used** (custom matrix supersedes coordinates) |
-| `distance` (n×n, authoritative) | duration matrix (the cost objective) | `np.rint(distance * scale).astype(np.int64)` -> wrap as `_vroom.Matrix(np.ascontiguousarray(M, dtype=np.uintc))` (Windows-safe, see §Context) -> `input.set_durations_matrix(profile, that_matrix)` |
-| travel times (VRPTW) | same duration matrix | travel time == distance (Solomon/GH); the one matrix serves cost + time |
-| `capacity` | `Vehicle.capacity` | `[int(capacity)]` (1-D amount vector) |
-| `demands[i]` | `Job.delivery` | `[int(demands[i])]` (goods loaded at depot, delivered to customer) |
-| `time_windows[i]` (VRPTW) | `Job.time_windows` | `[[int(e*scale), int(l*scale)]]` |
-| depot `time_windows` (VRPTW) | `Vehicle.time_window` | `[int(e*scale), int(l*scale)]` |
-| `service_times[i]` (VRPTW) | `Job.service` | `int(s*scale)` |
-| fleet size | N `Vehicle` objects | see §4 fleet sizing |
+| **PyVRP** 0.11.3 | `ProblemData(depots=[Depot,…])` + one `VehicleType(start_depot=idx, end_depot=idx)` per depot (depot = location index). | ✅ Yes |
+| **OR-Tools** | `RoutingIndexManager(n, num_vehicles, starts, ends)` with per-vehicle `starts`/`ends` arrays. | ✅ Yes |
+| **VROOM** | per-vehicle `vroom.Vehicle(start=idx, end=idx)`; different vehicles → different depots. | ✅ Yes |
+| **VRPSolverEasy** | one `add_vehicle_type(start_point_id=d, end_point_id=d)` per depot — there is an **official `demos/MDVRP.py`** doing exactly this. | ❌ **No — excluded by decision** |
 
-**Profile:** use one profile name (VROOM default `"car"`) consistently for the
-matrix and all vehicles. **Amount dimension:** all `capacity` and `delivery`
-vectors are length 1 and must agree (they do). **Scale:** reuse the module-level
-`_SCALE = {CVRP: 1, VRPTW: 10}` constant, identical to the other two adapters.
+So **MDVRP is covered by PyVRP + OR-Tools + VROOM** (three solvers). VRPSolverEasy, though
+natively *capable*, is **excluded** from MDVRP by decision: its free CLP engine may only
+support a single vehicle type (multi-depot needs one per depot — see Risks), the CLP/CPLEX
+question can't be settled without a costly live solve, and the build cost isn't justified.
+Its adapter therefore needs **no change** — it keeps `supported_variants = (CVRP, VRPTW)`,
+and `config.py` already raises a clear error if it is mistakenly listed under an MDVRP group.
+
+The architecture is additive: the runner/config/CLI are already driven dynamically off
+`VARIANTS` and each solver's `supported_variants`, so adding the variant + a loader +
+three per-adapter multi-depot branches is all that's required.
 
 ---
 
-## 4. Solver Wrapper Design — `solvers/vroom_solver.py`
+## Confirmed decisions
 
-**Responsibilities**
-- Translate one `Instance` into a `vroom.Input`.
-- Run VROOM with the fixed-exploration policy.
-- Translate the VROOM solution back into our `Solution`.
-- Report the engine version for reproducibility.
+- **Variant name / constant:** `MDVRP`, added to `VARIANTS`.
+- **Instances:** both `old/p01..p21` (int coords) **and** `new/pr01..pr10` (float coords).
+- **Depot assignment:** classic **open** assignment — any customer may be served by any
+  depot; the solver decides. This is the default behavior of every native API above.
+- **Route→depot encoding:** add `Solution.route_depots: list[int]` (parallel to `routes`);
+  empty for CVRP/VRPTW. Avoids changing the canonical `routes: list[list[int]]` shape.
+- **Max route duration `D`:** **ignored** (solved as capacity-constrained MDVRP). The `new`
+  instances carry `D=500`; ignoring it consistently across all three MDVRP solvers keeps the
+  cross-solver comparison fair. (Documented as a relaxation.)
+- **Fleet sizing:** **generous per-depot bound** — ignore the Cordeau `m` (vehicles/depot);
+  give each depot `num_customers` vehicles so a feasible solution always exists. Matches the
+  existing adapters' `max(1, n-1)` convention; optimum uses far fewer.
+- **Per-customer trailing fields** (`1 4 1 2 4 8`, PVRP visit-frequency metadata):
+  **silently discarded** — pure MDVRP visits each customer once.
+- **VRPSolverEasy:** **excluded** from MDVRP. No adapter change — stays `(CVRP, VRPTW)`.
+  Rationale: free-CLP may not support the multiple vehicle types multi-depot requires, the
+  CLP/CPLEX question needs a costly live solve to settle, and the payoff doesn't justify it.
+- **BKS:** none added for MDVRP for now (evaluator already tolerates missing BKS → gap NaN).
 
-**Public API (the `Solver` protocol — nothing more):**
+---
+
+## 1. Cordeau MDVRP file format (authoritative — confirmed against `demos/MDVRP.py`)
+
 ```
-class VroomSolver:
-    name = "vroom"
-    supported_variants = (CVRP, VRPTW)
-    def __init__(self, exploration_level: int = 5, nb_threads: int = 1): ...
-    def solve(self, instance, *, time_budget_s, seed) -> Solution
-    def version(self) -> str
+type  m  n  t                 # type=2 (MDVRP, ignore); m=vehicles/depot (ignore);
+                              # n=#customers; t=#depots
+D_1 Q_1                       # t lines: D=max route duration (IGNORE), Q=capacity
+...                           #          (all depots share Q in these instances)
+D_t Q_t
+id x y svc dem  f a d1 d2 d3 d4   # n customer lines; keep id,x,y,dem; drop svc + 6 PVRP toks
+...                               # coords are INT in old/, FLOAT in new/  → parse as float
+id x y  0 0 0 0               # t depot lines (at end of file); keep x,y
+...
 ```
-Engine knobs (`exploration_level`, `nb_threads`) live as **constructor defaults**,
-exactly as the base-class docstring prescribes — they never leak into `solve()`'s
-signature, preserving interchangeability.
 
-**Internal workflow of `solve()`**
-1. Deferred `import vroom` (and `pandas` only if needed) inside `solve()`, matching
-   the lazy-import pattern of the other adapters (a missing optional dep must not
-   break unrelated solvers).
-2. Guard `instance.variant in _SCALE` else raise `SolverError`.
-3. Build the scaled integer matrix from `instance.distance`, then wrap it as a
-   `_vroom.Matrix` via the Windows-safe `np.uintc` helper (see §Context).
-4. Construct `vroom.Input()`; `set_durations_matrix(profile, vroom_matrix)`.
-5. Add jobs (one per customer): CVRP -> `delivery=[demand]` only; VRPTW -> also
-   `service` + `time_windows=[[e, l]]`.
-6. Add the fleet (see sizing below): each `Vehicle(id, start=depot, end=depot,
-   capacity=[cap])`, plus `time_window=[depot_e, depot_l]` for VRPTW.
-7. `start = perf_counter()`; `solution = input.solve(
-   exploration_level=self.exploration_level, nb_threads=self.nb_threads,
-   timeout=timedelta(seconds=time_budget_s))`;
-   `runtime_s = perf_counter() - start`. **`seed` is ignored** for search control
-   (VROOM is deterministic at `nb_threads=1`).
-8. Convert to `Solution` (see §5).
+- Example `p01.txt` header `2 4 50 4` ⇒ **50 customers, 4 depots**, depot lines `0 80` ⇒
+  `D=0, Q=80`. Customers are file-ids `1..50`; depots are file-ids `51..54`.
+- `vrplib` does **not** parse this format → we write a small custom parser.
+- The bundled demo parser reads coords with `int()` and would crash on `new/pr*` floats — our
+  loader must use `float()`.
 
-**Fleet sizing.** Add `max(1, n - 1)` vehicles — one per customer, the same safe
-feasibility upper bound PyVRP uses. VROOM only routes vehicles it needs; surplus
-vehicles stay empty (dropped in extraction). Over-provisioning avoids spurious
-unassigned jobs. (Optionally reuse OR-Tools' `_vehicle_count` lower bound, but
-`n-1` is simpler and strictly safe; recommend `n-1`.)
-
-**Interaction with pyvroom.** Use the in-process matrix API only (`vroom.Input`,
-`set_durations_matrix`, `add_job`, `add_vehicle`, `Input.solve`). No routing
-server, no OSRM, no file I/O. `pyvroom` pulls in `pandas` (its solution is a
-DataFrame) — pin it in requirements to be explicit.
-
-> **API confirmed against the installed pyvroom 1.15.2 (Python 3.12.8, Windows).**
-> - Demand kwarg is `delivery=[...]` on `vroom.Job`.
-> - `vroom.Job(id=, location=, delivery=, service=, time_windows=[[e, l]])`.
-> - `vroom.Vehicle(id=, start=, end=, capacity=[...], time_window=[e, l])`.
-> - `Input.solve(exploration_level, nb_threads=4, timeout: timedelta|None=None,
->   depth=None)`.
-> - Matrix must be wrapped as `_vroom.Matrix(np.ascontiguousarray(M, dtype=np.uintc))`
->   on Windows (see §Context / PYVROOM_COMPATIBILITY_ISSUE.md).
+**Internal node indexing (uniform everywhere): depots first `0..t-1`, customers `t..t+n-1`.**
+This matches PyVRP's own location ordering (depots before clients) and generalizes the
+existing `depot==0` convention.
 
 ---
 
-## 5. Solution Conversion (VROOM result -> `Solution`)
+## 2. Core model changes
 
-VROOM returns a solution whose `routes` is a `pandas.DataFrame` (confirmed columns:
-`['vehicle_id', 'type', 'arrival', 'duration', 'setup', 'service', 'waiting_time',
-'location_index', 'id', 'description']`), one row per step (`type` in
-{`start`,`job`,`end`,...}), plus a `summary` with aggregate `cost`/`unassigned`.
+### `vrpbench/core/instance.py`
+- Add constant `MDVRP = "MDVRP"`; append to `VARIANTS` (currently `(CVRP, VRPTW)` at lines 16–18).
+- Add field `depot_indices: tuple[int, ...] | None = None`. Keep `depot: int = 0` (the
+  "primary" depot, = `depot_indices[0]`) so single-depot code paths still work.
+- Generalize the `customers` property (currently `range(1, num_nodes)`): when
+  `depot_indices` is set, return `range(len(depot_indices), num_nodes)` (depots are the
+  contiguous `0..t-1` block).
+- `__post_init__`: for `variant == MDVRP`, require `depot_indices` non-empty, all `< num_nodes`,
+  contiguous from 0, and `depot in depot_indices`.
 
-- **routes:** group rows by `vehicle_id`, keep `type == "job"` rows in order,
-  collect their `id` (== our customer index) into a list, **casting each to `int`**
-  (they come back as `np.int64`); drop empty lists. Produces `list[list[int]]` of
-  customer indices with the depot implied — exactly our canonical `Solution.routes`
-  form.
-- **objective:** `summary.cost / scale`. Since the cost matrix == scaled distance,
-  this is VROOM's own distance claim. It is only a cross-check — the evaluation
-  layer always re-scores against `instance.distance` (`obj_mismatch` reported).
-- **vehicle count:** leave `num_vehicles=0`; `Solution.__post_init__` derives it
-  as the count of non-empty routes.
-- **feasibility:** `feasible = (number of unassigned jobs == 0)` from
-  `summary.unassigned` (or `len(solution.unassigned)`). The evaluator independently
-  re-verifies (unvisited customers, capacity, time windows) and has final say on
-  the run's `status`.
-- **runtime:** wall-clock `perf_counter` delta around `input.solve()`, consistent
-  with the other adapters (not VROOM's internal `computing_times`).
+### `vrpbench/core/solution.py`
+- Add `route_depots: list[int] = field(default_factory=list)`. For MDVRP, `route_depots[i]`
+  is the depot index of `routes[i]`; empty otherwise. `__post_init__` unchanged
+  (`num_vehicles` still derived from non-empty routes).
 
----
-
-## 6. Error Handling
-
-| Failure | Detection | Handling |
-|---|---|---|
-| Unsupported variant | `variant not in _SCALE` | raise `SolverError` (parity with PyVRP/OR-Tools) |
-| Invalid input data (bad shapes) | already enforced by `Instance.__post_init__` | nothing extra; trust the validated `Instance` |
-| `pyvroom` not installed | deferred `import vroom` raises `ModuleNotFoundError` | propagates; runner records that single cell as `status="error"` and continues (no global break) |
-| VROOM runtime error (bad matrix/amount dims) | exception from `input.solve()` / `add_*` | wrap in `SolverError` with context |
-| Infeasible (jobs unassigned) | `summary.unassigned > 0` | return `Solution(feasible=False, ...)`; evaluator marks `status="infeasible"` (the route is still recorded) |
-
-The runner's per-cell `try/except` ([run.py](vrpbench/runner/run.py) `_run_cell`)
-already guarantees one bad cell never aborts the batch, so the adapter only needs
-to raise clear errors and never swallow them silently.
+### `vrpbench/core/evaluate.py`
+- `route_distance(instance, route, depot=None)`: default `depot = instance.depot`
+  (back-compat); when a depot is passed, anchor the route's first/last legs to it
+  (lines 33/34/37 currently hard-code `instance.depot`).
+- `total_distance`: for MDVRP, zip `solution.routes` with `solution.route_depots`; otherwise
+  use `instance.depot` as today.
+- `verify`:
+  - "depot appears inside a route" check (line 63) → check membership against **all**
+    `depot_indices` for MDVRP.
+  - For MDVRP, validate `route_depots` is present, same length as `routes`, and every entry
+    is a valid depot index; add a violation otherwise. Compute objective per-route with its
+    depot. Customer-visiting (uses the generalized `instance.customers`) and capacity checks
+    are unchanged.
+  - Time-window check stays VRPTW-only.
 
 ---
 
-## 7. Validation Strategy
+## 3. Loader / config / runner
 
-New file `tests/test_vroom_solver.py`, mirroring
-[tests/test_pyvrp_solver.py](tests/test_pyvrp_solver.py), using the bundled
-fixtures [tests/data/toy.vrp](tests/data/toy.vrp) (CVRP) and
-[tests/data/toy_solomon.txt](tests/data/toy_solomon.txt) (VRPTW).
+### `vrpbench/datasets/loader.py`
+- New `_load_cordeau_mdvrp(path) -> Instance`: parse header, `t` depot `D Q` lines (take `Q`,
+  ignore `D`), `n` customer lines (keep id/x/y/demand, drop svc + 6 PVRP tokens), `t` depot
+  coordinate lines. Build `coords` (depots first), `demands` (0 for depots), Euclidean
+  `distance` matrix (float, full `(t+n)²`), `capacity=Q`, `depot_indices=tuple(range(t))`,
+  `depot=0`, `num_vehicles=None`. Coords parsed as `float` (handles both old/new).
+- `load(path, variant=None)`: when `variant == MDVRP`, dispatch straight to the custom parser
+  and return — **before** the extension-based `detect_format` cross-check (which would
+  mis-detect the `.txt` file as Solomon/VRPTW). `load()` already accepts `variant`.
 
-**Small CVRP (`toy.vrp`)**
-- Expected: `evaluate.verify(...)` returns `feasible=True`; `objective ≈ 8.0`
-  (the independently known toy optimum, already asserted for PyVRP);
-  `obj_mismatch ≈ 0` (integer CVRP, scale 1); `runtime_s > 0`.
+### `vrpbench/runner/config.py`
+- `VARIANTS` membership check (line ~100) auto-accepts MDVRP once the constant is added.
+- Guard the `detect_format` vs declared-variant cross-check (lines ~106–111) so it is skipped
+  for `MDVRP` (extension is ambiguous; config's explicit `variant` is authoritative).
 
-**Small VRPTW (`toy_solomon.txt`)**
-- Expected: `feasible=True`; `objective > 0`. (Exact value not pinned, matching
-  the PyVRP test.)
-
-**Consistency checks**
-- Determinism: solving twice yields identical `routes` (guaranteed by
-  `nb_threads=1`, deterministic VROOM, no seed dependence).
-- `version()` returns a real version (not `"unknown"`).
-- Every customer visited exactly once, capacity respected, TW respected — all
-  enforced by `evaluate.verify` (asserted via `ev.feasible`).
-
-**Cross-solver comparison (manual / smoke).** Add `vroom` to a scratch experiment
-(or temporarily to [experiments/smoke.yaml](experiments/smoke.yaml)) alongside
-`pyvrp` and `ortools`. On the same instances all three must:
-- be `feasible`/`status=ok`;
-- visit all customers exactly once (already verified);
-- produce objectives in the same ballpark (VROOM, being heuristic, may differ but
-  should be within a few % on small instances). Large divergence signals a
-  scaling/matrix/mapping bug.
-- VROOM's `obj_mismatch` should be ~0 after descaling (sanity-checks the
-  cost-matrix == distance assumption).
+### `vrpbench/runner/run.py`
+- Pass the dataset group's variant into the loader: `loader.load(path, variant=variant)`
+  (currently `loader.load(path)` at line ~67) so MDVRP `.txt` files use the right parser.
+  The per-cell `try/except` (lines ~93–94) already isolates any solver failure as
+  `status="error"`.
 
 ---
 
-## 8. Implementation Roadmap
+## 4. Solver adapters — native multi-depot (three solvers)
 
-Each step is independently testable and < 1 hour.
+Each of the **three** in-scope adapters gains `MDVRP` in `supported_variants` and `_SCALE`
+(`MDVRP: 1`, same as CVRP), an MDVRP branch in its model-build, and **must populate
+`route_depots`** in the returned `Solution`. Common pattern: depots =
+`instance.depot_indices`, customers = `instance.customers`,
+`vehicles_per_depot = num_customers`. **`vrpsolvereasy_solver.py` is untouched.**
 
-**Step 1 — DONE (API & Windows workaround confirmed).** pyvroom 1.15.2 is installed
-in the Windows Python 3.12.8; the API names, `solve` timeout, solution columns, and
-the `np.uintc` matrix workaround are all verified end-to-end (toy CVRP solves to
-optimum 8). See [PYVROOM_COMPATIBILITY_ISSUE.md](PYVROOM_COMPATIBILITY_ISSUE.md).
-
-**Step 2 — Add dependency.** Add `pyvroom>=...` (and `pandas>=...`) to
-[requirements.txt](requirements.txt). *Files:* `requirements.txt`. *Test:*
-`pip install -r requirements.txt` clean; `python -c "import vroom"`.
-
-**Step 3 — Skeleton adapter.** Create
-[vrpbench/solvers/vroom_solver.py](vrpbench/solvers/vroom_solver.py) with the
-class, `name`, `supported_variants`, `_SCALE`, constructor defaults, `version()`,
-and a `solve()` that raises `NotImplementedError`. *Files:* new adapter. *Test:*
-`from ... import VroomSolver; isinstance(VroomSolver(), Solver)` (runtime-checkable
-Protocol) is `True`; `version()` != `"unknown"`.
-
-**Step 4 — Input builder.** Implement matrix scaling, jobs, and fleet for **CVRP**
-first (`_build_input`). *Files:* adapter. *Test:* build input from `toy.vrp` with
-no exception; inspect job/vehicle counts.
-
-**Step 5 — Solve + convert (CVRP).** Wire `input.solve(...)`, route extraction,
-objective descaling, feasibility, runtime. *Files:* adapter. *Test:* the CVRP case
-of `tests/test_vroom_solver.py` (`objective ≈ 8.0`, feasible, `obj_mismatch ≈ 0`).
-
-**Step 6 — VRPTW support.** Extend `_build_input` with `service`, job
-`time_windows`, vehicle `time_window`, scale 10. *Files:* adapter. *Test:* the
-VRPTW case (feasible, `objective > 0`).
-
-**Step 7 — Register the solver.** Add `_make_vroom()` + `"vroom"` to
-[vrpbench/solvers/__init__.py](vrpbench/solvers/__init__.py). *Files:* registry.
-*Test:* `get_solver("vroom")` returns the adapter; `load_config` accepts a config
-listing `vroom` for both variants (no edit to config.py needed).
-
-**Step 8 — Full test file + determinism.** Complete `tests/test_vroom_solver.py`
-(CVRP, VRPTW, determinism, version). *Files:* test. *Test:* `pytest
-tests/test_vroom_solver.py` green; full suite still green.
-
-**Step 9 — End-to-end smoke.** Run a scratch experiment YAML with all three
-solvers via `python -m vrpbench.cli --config ...`; confirm `vroom` rows appear in
-`results.csv` with `status=ok` and comparable objectives. *Files:* a scratch
-config (optional). *Test:* CSV inspection / cross-solver sanity.
+- **`pyvrp_solver.py`** — `depots=[pyvrp.Depot(coords[d]) for d in depot_indices]`; one
+  `pyvrp.VehicleType(num_available=num_customers, capacity=[Q], start_depot=d, end_depot=d, …)`
+  per depot; clients at indices `t..t+n-1`; full distance/duration matrices. Route extraction:
+  `r.visits()` → customer indices, `r.start_depot()` → `route_depots` entry. (PyVRP 0.11.3
+  `VehicleType(start_depot, end_depot)` take location indices — verified.)
+- **`ortools_solver.py`** — `num_vehicles = t * vehicles_per_depot`; build `starts`/`ends`
+  arrays assigning vehicles round-robin to depots; `RoutingIndexManager(n, num_vehicles, starts, ends)`
+  (replaces the single-`depot` form at line 45). Capacity dimension unchanged. Route
+  extraction (`_extract_routes`, lines ~140–151): record each vehicle's start depot →
+  `route_depots`.
+- **`vroom_solver.py`** — create `t * vehicles_per_depot` vehicles, each
+  `vroom.Vehicle(start=d, end=d, capacity=[Q])` with `d` its assigned depot (lines ~186–195).
+  Route extraction (`_to_solution`, lines ~92–114): map `vehicle_id` → its depot →
+  `route_depots`.
+- **`vrpsolvereasy_solver.py`** — **no change.** Stays `(CVRP, VRPTW)`; excluded from MDVRP.
 
 ---
 
-## 9. Risk Assessment
+## 5. Tests & smoke config
 
-**Correctness risks**
-- *pyvroom API drift* (`delivery` vs `amount`, solve signature, DataFrame columns).
-  → Step 1 pins the real API before coding; deferred import keeps blast radius to
-  the vroom cell only.
-- *Cost vs duration confusion in VRPTW.* VROOM uses the duration matrix as both
-  cost and time. → We deliberately feed one matrix (= scaled distance) and assert
-  `obj_mismatch ≈ 0` against the independent evaluator to catch any mismatch.
-- *Silent unassigned jobs* read as a "solution." → Explicitly check
-  `summary.unassigned`; the evaluator's unvisited-customer check is a second net.
+- **`tests/data/toy_mdvrp.txt`** — tiny Cordeau-format instance (2 depots, ~4 customers) for
+  fast solver tests.
+- **`tests/test_mdvrp_loader.py`** — parse `toy_mdvrp.txt` and a real `old/p01.txt`: assert
+  `variant==MDVRP`, depot count/`depot_indices`, customer count, demands, capacity from `Q`,
+  float coords, symmetric distance. Add a `new/pr01.txt` case to lock float parsing.
+- **Extend `test_pyvrp_solver.py`, `test_ortools_solver.py`, `test_vroom_solver.py`** — one
+  MDVRP case each: `evaluate.verify` feasible, `objective > 0`, `obj_mismatch ≈ 0`,
+  `route_depots` populated and all-valid. (`test_vrpsolvereasy_solver.py` is untouched.)
+- **`tests/test_core.py`** (or evaluate test) — MDVRP `route_distance` anchors to the correct
+  per-route depot.
+- **`experiments/mdvrp_smoke.yaml`** — the **three** MDVRP solvers (`pyvrp`, `ortools`,
+  `vroom`) on the toy + one small instance, tiny budget; confirm `results.csv` rows with
+  `status=ok`, valid `route_depots`, `obj_mismatch ≈ 0`.
 
-**Reproducibility risks**
-- *No seed; thread non-determinism.* → Force `nb_threads=1` and fixed
-  `exploration_level`; assert run-to-run identical routes in tests. Record
-  `version()` (already persisted by the runner) so engine changes are traceable.
+---
 
-**Windows binding risk (RESOLVED)**
-- *`Incompatible buffer format!`* on `set_durations_matrix` (pyvroom #85, open
-  upstream, no released fix). → Resolved locally by building `_vroom.Matrix` from a
-  `np.uintc` array and passing the object (skips pyvroom's bad `uint32` cast).
-  Centralize this in one helper; if a future pyvroom release fixes #85 the helper
-  still works. Verified on this machine.
+## 6. Implementation roadmap (dependency order)
 
-**Benchmark-consistency risks**
-- *Time budget* — vroom now **honors** `time_budget_s` via `timeout=timedelta(...)`,
-  so it competes under the same wall-clock budget as OR-Tools/PyVRP. Risk reduced
-  to: VROOM may converge before the budget (it is fast) and stop early; the
-  recorded `runtime_s` makes this auditable, and `exploration_level` remains a
-  fixed, reproducible knob.
-- *Scaling divergence from the other adapters.* → Reuse the identical
-  `_SCALE = {CVRP: 1, VRPTW: 10}` constant and `np.rint(... ).astype(int)` rounding,
-  so all three solvers see byte-identical integer matrices; the evaluator re-scores
-  everyone against the same authoritative `instance.distance`.
+1. **Core model:** `instance.py` (MDVRP const, `depot_indices`, `customers` property,
+   validation) + `solution.py` (`route_depots`).
+2. **Loader/config/runner:** `_load_cordeau_mdvrp` + `load()` dispatch; `config.py` detect
+   guard; `run.py` pass `variant`. *Test:* `loader.load("…/old/p01.txt", variant="MDVRP")`
+   yields 50 customers / 4 depots.
+3. **Evaluator:** depot-parameterized `route_distance`, MDVRP branch in `total_distance` /
+   `verify`.
+4. **Adapters (three):** add MDVRP branch + `route_depots`. Order by friction:
+   OR-Tools and VROOM (low) → PyVRP (medium). *Test:* ad-hoc solve of `toy_mdvrp.txt` per
+   solver → feasible, `obj_mismatch ≈ 0`. (`vrpsolvereasy` untouched.)
+5. **Tests + toy instance + smoke YAML.** *Test:* `pytest -q` green.
+6. **End-to-end smoke:** `python -m vrpbench.cli --config experiments/mdvrp_smoke.yaml` →
+   MDVRP rows for the three solvers, `status=ok`, valid `route_depots`.
+
+---
+
+## 7. Risks
+
+- **VRPSolverEasy excluded (decision, not a bug):** `src/solver.py` docstring
+  (lines 1269–1270) states *"For academic version, with CLP it's possible to resolve the
+  problem with only one vehicle type"* — but multi-depot needs **one vehicle type per
+  depot**. `demos/MDVRP.py` defaults to `solver_name="CLP"`, so it is genuinely unclear
+  whether free-CLP handles MDVRP or whether CPLEX is required, and resolving it needs a costly
+  live solve. We therefore **leave VRPSolverEasy at `(CVRP, VRPTW)`** and cover MDVRP with the
+  other three. If exact MDVRP results are wanted later, revisit with CPLEX.
+- **Float coords (new instances):** the bundled demo parser uses `int()` and crashes on
+  `pr*`; our loader parses `float` to handle both sets.
+- **`route_depots` correctness:** every adapter must correctly map each route to its depot;
+  the evaluator independently validates membership and re-scores the objective per depot.
+- **Node-indexing consistency:** depots `0..t-1`, customers after — must be identical across
+  loader, evaluator, and the three MDVRP adapters, or objectives/feasibility diverge.
+- **Ignoring `D`:** `new` instances become a capacity-only relaxation; acceptable because it
+  is applied uniformly to all solvers and BKS comparison is out of scope here. Documented.
+- **Distance convention:** all solvers read `instance.distance` and apply the same
+  `_SCALE`+`np.rint`, so costs are byte-identical; the evaluator re-scores everyone.
 
 ---
 
 ## Verification (end-to-end)
 
-1. `pip install -r requirements.txt` — pyvroom imports.
-2. `pytest tests/test_vroom_solver.py -q` — CVRP `objective ≈ 8.0`, VRPTW feasible,
-   determinism, version all pass.
-3. `pytest -q` — full suite still green (proves no regression; config/runner pick
-   up `vroom` with zero edits).
-4. `python -m vrpbench.cli --config <scratch-with-all-3-solvers>.yaml` — `results.csv`
-   shows `vroom` rows, `status=ok`, objectives within a few % of `pyvrp`/`ortools`,
-   `obj_mismatch ≈ 0`.
+1. `loader.load(".../MDVRP/old/p01.txt", variant="MDVRP")` → 50 customers, 4 depots,
+   `depot_indices == (0,1,2,3)`, capacity 80; `new/pr01.txt` parses floats without error.
+2. `pytest tests/test_mdvrp_loader.py tests/test_*_solver.py -q` → loader correct; each solver
+   produces a feasible MDVRP solution with valid `route_depots` and `obj_mismatch ≈ 0`.
+3. `pytest -q` → full suite still green (CVRP/VRPTW unaffected; runner/config pick up MDVRP
+   dynamically).
+4. `python -m vrpbench.cli --config experiments/mdvrp_smoke.yaml` → MDVRP rows for
+   `pyvrp`, `ortools`, `vroom`; `status=ok`, valid `route_depots`, `obj_mismatch ≈ 0`.

@@ -64,7 +64,7 @@ def _run_cell(cfg, bks, instance_cache, variant, path, solver, seed) -> RunRecor
     try:
         instance = instance_cache.get(path)
         if instance is None:
-            instance = loader.load(path)
+            instance = loader.load(path, variant=variant)
             instance_cache[path] = instance
         base["instance_name"] = instance.name
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from vrpbench.core.instance import CVRP, VRPTW, Instance
+from vrpbench.core.instance import CVRP, MDVRP, VRPTW, Instance
 
 
 def _euclid(coords: np.ndarray) -> np.ndarray:
@@ -28,6 +28,28 @@ def cvrp_instance() -> Instance:
         capacity=2,
         distance=dist,
         num_vehicles=2,
+    )
+
+
+@pytest.fixture
+def mdvrp_instance() -> Instance:
+    # Two depots (indices 0,1); four customers (indices 2..5), two clustered near
+    # each depot. depot 0 at origin, depot 1 at (10, 10).
+    coords = np.array(
+        [[0.0, 0.0], [10.0, 10.0], [1.0, 0.0], [0.0, 1.0], [10.0, 9.0], [9.0, 10.0]]
+    )
+    demands = np.array([0, 0, 10, 10, 10, 10])
+    dist = _euclid(coords)
+    return Instance(
+        name="toy-mdvrp",
+        variant=MDVRP,
+        num_nodes=6,
+        coords=coords,
+        demands=demands,
+        capacity=100,
+        distance=dist,
+        depot=0,
+        depot_indices=(0, 1),
     )
 
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from vrpbench.core.instance import VRPTW, Instance
+from vrpbench.core.instance import MDVRP, VRPTW, Instance
 from vrpbench.core.solution import Solution
 
 # Tolerance for comparing solver-reported vs recomputed objective.
@@ -25,12 +25,17 @@ class Evaluation:
     obj_mismatch: float  # |recomputed - solver_reported|
 
 
-def route_distance(instance: Instance, route: list[int]) -> float:
-    """Distance of a single route, depot -> customers -> depot."""
+def route_distance(instance: Instance, route: list[int], depot: int | None = None) -> float:
+    """Distance of a single route, depot -> customers -> depot.
+
+    ``depot`` defaults to ``instance.depot`` (single-depot CVRP/VRPTW). For MDVRP,
+    pass the route's assigned depot so the first/last legs are anchored correctly.
+    """
     if not route:
         return 0.0
     d = instance.distance
-    depot = instance.depot
+    if depot is None:
+        depot = instance.depot
     total = d[depot, route[0]]
     for a, b in zip(route, route[1:]):
         total += d[a, b]
@@ -39,6 +44,15 @@ def route_distance(instance: Instance, route: list[int]) -> float:
 
 
 def total_distance(instance: Instance, solution: Solution) -> float:
+    # MDVRP: anchor each route at its own depot when that mapping is available.
+    # An out-of-range depot (a buggy solution, separately flagged by verify) falls
+    # back to the primary depot so the recompute stays finite instead of crashing.
+    if instance.variant == MDVRP and len(solution.route_depots) == len(solution.routes):
+        depots = set(instance.depot_indices or ())
+        return sum(
+            route_distance(instance, r, d if d in depots else instance.depot)
+            for r, d in zip(solution.routes, solution.route_depots)
+        )
     return sum(route_distance(instance, r) for r in solution.routes)
 
 
@@ -60,7 +74,8 @@ def verify(instance: Instance, solution: Solution) -> Evaluation:
     extra = sorted(seen - expected)
     if extra:
         violations.append(f"invalid node indices in routes: {extra}")
-    if instance.depot in seen:
+    depots = set(instance.depot_indices) if instance.depot_indices else {instance.depot}
+    if seen & depots:
         violations.append("depot appears inside a route")
 
     # --- capacity -------------------------------------------------------------
@@ -70,6 +85,10 @@ def verify(instance: Instance, solution: Solution) -> Evaluation:
             violations.append(
                 f"route {i} load {load} exceeds capacity {instance.capacity}"
             )
+
+    # --- multi-depot route assignment (MDVRP only) ---------------------------
+    if instance.variant == MDVRP:
+        violations.extend(_check_route_depots(instance, solution))
 
     # --- time windows (VRPTW only) -------------------------------------------
     if instance.variant == VRPTW:
@@ -89,6 +108,22 @@ def verify(instance: Instance, solution: Solution) -> Evaluation:
         violations=violations,
         obj_mismatch=obj_mismatch,
     )
+
+
+def _check_route_depots(instance: Instance, solution: Solution) -> list[str]:
+    """MDVRP: every route must name exactly one valid depot it starts/ends at."""
+    violations: list[str] = []
+    depots = set(instance.depot_indices or ())
+    rd = solution.route_depots
+    if len(rd) != len(solution.routes):
+        violations.append(
+            f"route_depots length {len(rd)} does not match {len(solution.routes)} routes"
+        )
+        return violations
+    bad = sorted({d for d in rd if d not in depots})
+    if bad:
+        violations.append(f"routes assigned to invalid depots: {bad}")
+    return violations
 
 
 def _check_time_windows(instance: Instance, solution: Solution) -> list[str]:
