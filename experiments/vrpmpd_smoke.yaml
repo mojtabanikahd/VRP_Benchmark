@@ -1,0 +1,15 @@
+# VRPMPD smoke: all three supporting solvers on two small S instances.
+# Two-stage objective: minimize vehicles first (via fixed cost), then distance.
+# VRPSolverEasy is excluded (no mixed pickup/delivery model).
+run_id: vrpmpd_smoke
+seeds: [0]
+time_budget:
+  base_s: 10
+  per_node_ms: 0
+results_dir: results
+solvers: [pyvrp, ortools, vroom]
+datasets:
+  - variant: VRPMPD
+    instances:
+      - data/instances/S/CMT01H.vrpmpd
+      - data/instances/S/CMT01Q.vrpmpd

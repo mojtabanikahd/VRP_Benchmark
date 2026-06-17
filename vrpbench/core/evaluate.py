@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from vrpbench.core.instance import MDVRP, VRPTW, Instance
+from vrpbench.core.instance import MDVRP, VRPMPD, VRPTW, Instance
 from vrpbench.core.solution import Solution
 
 # Tolerance for comparing solver-reported vs recomputed objective.
@@ -79,12 +79,15 @@ def verify(instance: Instance, solution: Solution) -> Evaluation:
         violations.append("depot appears inside a route")
 
     # --- capacity -------------------------------------------------------------
-    for i, route in enumerate(solution.routes):
-        load = int(sum(instance.demands[c] for c in route if 0 <= c < instance.num_nodes))
-        if load > instance.capacity:
-            violations.append(
-                f"route {i} load {load} exceeds capacity {instance.capacity}"
-            )
+    if instance.variant == VRPMPD:
+        violations.extend(_check_vrpmpd_capacity(instance, solution))
+    else:
+        for i, route in enumerate(solution.routes):
+            load = int(sum(instance.demands[c] for c in route if 0 <= c < instance.num_nodes))
+            if load > instance.capacity:
+                violations.append(
+                    f"route {i} load {load} exceeds capacity {instance.capacity}"
+                )
 
     # --- multi-depot route assignment (MDVRP only) ---------------------------
     if instance.variant == MDVRP:
@@ -158,6 +161,47 @@ def _check_time_windows(instance: Instance, solution: Solution) -> list[str]:
                 violations.append(
                     f"route {i}: return {t:.3f} > depot close {tw[depot, 1]:.3f}"
                 )
+    return violations
+
+
+def _check_vrpmpd_capacity(instance: Instance, solution: Solution) -> list[str]:
+    """Position-dependent capacity check for VRPMPD.
+
+    A vehicle departs the depot loaded with all of its route's deliveries; at each
+    stop the load drops by the delivery amount and rises by the pickup amount.  The
+    capacity must not be exceeded (or go negative) at any point along the route.
+    """
+    violations: list[str] = []
+    cap = instance.capacity
+    deliveries = instance.deliveries
+    pickups = instance.pickups
+    assert deliveries is not None and pickups is not None  # guaranteed for VRPMPD
+
+    for i, route in enumerate(solution.routes):
+        if not route:
+            continue
+        # Initial load = sum of all deliveries on this route (vehicle leaves full).
+        load = int(sum(deliveries[c] for c in route if 0 <= c < instance.num_nodes))
+        if load > cap:
+            violations.append(
+                f"route {i}: departure load {load} exceeds capacity {cap}"
+            )
+            continue
+        for c in route:
+            if not (0 <= c < instance.num_nodes):
+                continue
+            load -= int(deliveries[c])
+            load += int(pickups[c])
+            if load > cap:
+                violations.append(
+                    f"route {i}: load {load} after customer {c} exceeds capacity {cap}"
+                )
+                break
+            if load < 0:
+                violations.append(
+                    f"route {i}: load {load} after customer {c} is negative"
+                )
+                break
     return violations
 
 

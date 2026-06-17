@@ -19,16 +19,21 @@ import time
 
 import numpy as np
 
-from vrpbench.core.instance import CVRP, MDVRP, VRPTW, Instance
+from vrpbench.core.instance import CVRP, MDVRP, VRPMPD, VRPTW, Instance
 from vrpbench.core.solution import Solution
-from vrpbench.solvers.base import SolverError, mdvrp_vehicles_per_depot
+from vrpbench.solvers.base import (
+    SolverError,
+    lexicographic_fixed_cost,
+    mdvrp_vehicles_per_depot,
+    vrpmpd_max_vehicles,
+)
 
-_SCALE = {CVRP: 1, VRPTW: 10, MDVRP: 1}
+_SCALE = {CVRP: 1, VRPTW: 10, MDVRP: 1, VRPMPD: 1}
 
 
 class PyVRPSolver:
     name = "pyvrp"
-    supported_variants = (CVRP, VRPTW, MDVRP)
+    supported_variants = (CVRP, VRPTW, MDVRP, VRPMPD)
 
     def solve(self, instance: Instance, *, time_budget_s: float, seed: int) -> Solution:
         import pyvrp
@@ -60,9 +65,16 @@ class PyVRPSolver:
             routes.append(visits)
             route_depots.append(int(r.start_depot()))
 
+        # For VRPMPD the solver objective includes the fixed vehicle cost; report
+        # pure travel distance so obj_mismatch vs. the independent re-score is ~0.
+        if instance.variant == VRPMPD:
+            reported_obj = result.best.distance() / scale
+        else:
+            reported_obj = result.cost() / scale
+
         return Solution(
             routes=routes,
-            objective=result.cost() / scale,
+            objective=reported_obj,
             feasible=result.is_feasible(),
             runtime_s=runtime_s,
             route_depots=route_depots if instance.variant == MDVRP else [],
@@ -88,6 +100,9 @@ def _build_data(pyvrp, instance: Instance, scale: int):
 
     if instance.variant == MDVRP:
         return _build_mdvrp_data(pyvrp, instance, dist_int)
+
+    if instance.variant == VRPMPD:
+        return _build_vrpmpd_data(pyvrp, instance, dist_int)
 
     if instance.variant == VRPTW:
         tw = instance.time_windows
@@ -192,6 +207,55 @@ def _build_mdvrp_data(pyvrp, instance: Instance, dist_int):
         clients=clients,
         depots=depots,
         vehicle_types=vehicle_types,
+        distance_matrices=[dist_int],
+        duration_matrices=[duration_int],
+    )
+
+
+def _build_vrpmpd_data(pyvrp, instance: Instance, dist_int):
+    """VRPMPD ProblemData: single depot, mixed pickup/delivery per client.
+
+    Each client carries both a ``delivery`` (depot -> client) and a ``pickup``
+    (client -> depot) amount.  PyVRP enforces the position-dependent capacity
+    constraint natively via ``LoadSegment.merge`` (peak-load overflow tracking).
+
+    A large ``fixed_cost`` on the VehicleType makes minimising the number of
+    vehicles lexicographically primary; ``result.best.distance()`` is used to
+    extract the pure travel objective (excluding fixed costs) so the evaluator's
+    independent re-score matches.
+    """
+    n = instance.num_nodes
+    coords = instance.coords
+    depot = instance.depot
+    deliveries = instance.deliveries
+    pickups = instance.pickups
+    assert deliveries is not None and pickups is not None
+
+    depot_obj = pyvrp.Depot(x=float(coords[depot, 0]), y=float(coords[depot, 1]))
+    clients = [
+        pyvrp.Client(
+            x=float(coords[i, 0]),
+            y=float(coords[i, 1]),
+            delivery=[int(deliveries[i])],
+            pickup=[int(pickups[i])],
+        )
+        for i in range(n)
+        if i != depot
+    ]
+
+    num_v = vrpmpd_max_vehicles(instance)
+    fixed = lexicographic_fixed_cost(dist_int, n)
+    vehicle_type = pyvrp.VehicleType(
+        num_available=num_v,
+        capacity=[int(instance.capacity)],
+        fixed_cost=fixed,
+    )
+
+    duration_int = np.zeros((n, n), dtype=np.int64)
+    return pyvrp.ProblemData(
+        clients=clients,
+        depots=[depot_obj],
+        vehicle_types=[vehicle_type],
         distance_matrices=[dist_int],
         duration_matrices=[duration_int],
     )

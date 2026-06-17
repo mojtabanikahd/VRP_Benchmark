@@ -17,33 +17,41 @@ import numpy as np
 CVRP = "CVRP"
 VRPTW = "VRPTW"
 MDVRP = "MDVRP"
-VARIANTS = (CVRP, VRPTW, MDVRP)
+VRPMPD = "VRPMPD"
+VARIANTS = (CVRP, VRPTW, MDVRP, VRPMPD)
 
 
 @dataclass(frozen=True)
 class Instance:
     """A capacitated VRP instance, optionally with time windows or multiple depots.
 
-    Single-depot variants (CVRP/VRPTW) use node index 0 as the depot with customer
-    indices ``1 .. num_nodes - 1``. MDVRP places the ``t`` depots first at the
-    contiguous indices ``0 .. t - 1`` (``depot_indices``) and customers at
+    Single-depot variants (CVRP/VRPTW/VRPMPD) use node index 0 as the depot with
+    customer indices ``1 .. num_nodes - 1``. MDVRP places the ``t`` depots first at
+    the contiguous indices ``0 .. t - 1`` (``depot_indices``) and customers at
     ``t .. num_nodes - 1``.
+
+    For VRPMPD, ``pickups`` and ``deliveries`` are the authoritative per-node load
+    fields; ``demands`` mirrors ``deliveries`` for interface compatibility with solvers
+    that only read ``demands``.
     """
 
     name: str
-    variant: str  # "CVRP" | "VRPTW" | "MDVRP"
+    variant: str  # "CVRP" | "VRPTW" | "MDVRP" | "VRPMPD"
     num_nodes: int  # includes all depots and customers
     coords: np.ndarray  # (n, 2) float
     demands: np.ndarray  # (n,) int; depot demand is 0
     capacity: int
     distance: np.ndarray  # (n, n) float — precomputed, authoritative
     depot: int = 0  # primary depot; for MDVRP this is depot_indices[0]
-    num_vehicles: int | None = None  # fleet size/cap if specified, else None
-    # MDVRP-only (None for CVRP/VRPTW): contiguous depot indices 0..t-1.
+    num_vehicles: int | None = None  # fleet size hint if specified, else None
+    # MDVRP-only (None for CVRP/VRPTW/VRPMPD): contiguous depot indices 0..t-1.
     depot_indices: tuple[int, ...] | None = None
-    # VRPTW-only (None for CVRP/MDVRP):
+    # VRPTW-only (None for CVRP/MDVRP/VRPMPD):
     time_windows: np.ndarray | None = None  # (n, 2): [earliest, latest]
     service_times: np.ndarray | None = None  # (n,)
+    # VRPMPD-only (None for CVRP/VRPTW/MDVRP):
+    pickups: np.ndarray | None = None    # (n,) int; depot entry is 0
+    deliveries: np.ndarray | None = None  # (n,) int; depot entry is 0
     # Original instance file, when loaded from disk (used by file-based solvers).
     source_path: str | None = None
 
@@ -74,6 +82,13 @@ class Instance:
                 raise ValueError(f"depot_indices {di} leaves no customers (num_nodes={n})")
             if self.depot not in di:
                 raise ValueError(f"depot {self.depot} must be one of depot_indices {di}")
+        if self.variant == VRPMPD:
+            if self.pickups is None or self.deliveries is None:
+                raise ValueError("VRPMPD instance requires pickups and deliveries arrays")
+            if self.pickups.shape != (n,):
+                raise ValueError(f"pickups must be ({n},), got {self.pickups.shape}")
+            if self.deliveries.shape != (n,):
+                raise ValueError(f"deliveries must be ({n},), got {self.deliveries.shape}")
 
     @property
     def customers(self) -> range:

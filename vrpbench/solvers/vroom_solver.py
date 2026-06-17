@@ -30,17 +30,22 @@ from datetime import timedelta
 
 import numpy as np
 
-from vrpbench.core.instance import CVRP, MDVRP, VRPTW, Instance
+from vrpbench.core.instance import CVRP, MDVRP, VRPMPD, VRPTW, Instance
 from vrpbench.core.solution import Solution
-from vrpbench.solvers.base import SolverError, mdvrp_vehicles_per_depot
+from vrpbench.solvers.base import (
+    SolverError,
+    lexicographic_fixed_cost,
+    mdvrp_vehicles_per_depot,
+    vrpmpd_max_vehicles,
+)
 
-_SCALE = {CVRP: 1, VRPTW: 10, MDVRP: 1}
+_SCALE = {CVRP: 1, VRPTW: 10, MDVRP: 1, VRPMPD: 1}
 _PROFILE = "car"
 
 
 class VroomSolver:
     name = "vroom"
-    supported_variants = (CVRP, VRPTW, MDVRP)
+    supported_variants = (CVRP, VRPTW, MDVRP, VRPMPD)
 
     def __init__(self, exploration_level: int = 5, nb_threads: int = 1) -> None:
         """Engine knobs (kept off ``solve``'s signature to stay interchangeable).
@@ -77,7 +82,7 @@ class VroomSolver:
             raise SolverError(f"VROOM solve failed: {exc}") from exc
         runtime_s = time.perf_counter() - start
 
-        return _to_solution(result, scale, runtime_s, vehicle_depot)
+        return _to_solution(result, scale, runtime_s, vehicle_depot, instance.variant)
 
     def version(self) -> str:
         """Return the pyvroom package version (recorded for reproducibility)."""
@@ -90,18 +95,25 @@ class VroomSolver:
 
 
 def _to_solution(
-    result, scale: int, runtime_s: float, vehicle_depot: dict[int, int] | None = None
+    result,
+    scale: int,
+    runtime_s: float,
+    vehicle_depot: dict[int, int] | None = None,
+    variant: str = "",
 ) -> Solution:
     """Convert a VROOM solution into our canonical :class:`Solution`.
 
     ``result.routes`` is a per-step ``pandas.DataFrame``; we group by
     ``vehicle_id``, keep ``type == "job"`` rows in order, and collect their ``id``
-    (== our customer index) into one list per non-empty route. ``summary.cost`` is
-    the scaled distance; descaling yields VROOM's own objective claim. Any
-    unassigned job marks the solution infeasible (the evaluator re-verifies).
+    (== our customer index) into one list per non-empty route. Any unassigned job
+    marks the solution infeasible (the evaluator re-verifies).
 
     For MDVRP, ``vehicle_depot`` maps each vehicle id to its (fixed) depot node, so
     each non-empty route records the depot it starts and ends at.
+
+    For VRPMPD the solver objective (``summary.cost``) includes the fixed vehicle
+    cost; we report ``summary.duration`` instead, which equals pure travel distance
+    because the distance matrix is fed as VROOM's duration matrix with service=0.
     """
     df = result.routes
     routes: list[list[int]] = []
@@ -114,9 +126,14 @@ def _to_solution(
             if vehicle_depot is not None:
                 route_depots.append(int(vehicle_depot[int(vehicle_id)]))
 
+    if variant == VRPMPD:
+        objective = float(result.summary.duration) / scale
+    else:
+        objective = float(result.summary.cost) / scale
+
     return Solution(
         routes=routes,
-        objective=float(result.summary.cost) / scale,
+        objective=objective,
         feasible=int(result.summary.unassigned) == 0,
         runtime_s=runtime_s,
         route_depots=route_depots if vehicle_depot is not None else [],
@@ -167,6 +184,9 @@ def _build_input(instance: Instance, scale: int):
 
     if instance.variant == MDVRP:
         return _build_mdvrp_input(vroom, problem, instance)
+
+    if instance.variant == VRPMPD:
+        return _build_vrpmpd_input(vroom, problem, instance, dist_int)
 
     is_vrptw = instance.variant == VRPTW
     if is_vrptw:
@@ -246,3 +266,45 @@ def _build_mdvrp_input(vroom, problem, instance: Instance):
             vid += 1
 
     return problem, vehicle_depot
+
+
+def _build_vrpmpd_input(vroom, problem, instance: Instance, dist_int):
+    """Add VRPMPD jobs and vehicles to ``problem``; return (problem, None).
+
+    Each customer becomes a job with both ``delivery`` (depot->customer) and
+    ``pickup`` (customer->depot) amounts. VROOM tracks load step-by-step
+    (position-dependent) natively when both delivery and pickup are set on a Job.
+    A large per-vehicle fixed cost implements the lexicographic two-stage objective
+    (minimize vehicles first, then distance). The problem returns ``None`` for
+    ``vehicle_depot`` because all vehicles share the single depot.
+    """
+    deliveries = instance.deliveries
+    pickups = instance.pickups
+    assert deliveries is not None and pickups is not None
+
+    for i in instance.customers:
+        problem.add_job(
+            vroom.Job(
+                id=i,
+                location=i,
+                delivery=[int(deliveries[i])],
+                pickup=[int(pickups[i])],
+            )
+        )
+
+    num_v = vrpmpd_max_vehicles(instance)
+    fixed = lexicographic_fixed_cost(dist_int, instance.num_nodes)
+    depot = instance.depot
+    for vid in range(num_v):
+        problem.add_vehicle(
+            vroom.Vehicle(
+                id=vid,
+                start=int(depot),
+                end=int(depot),
+                profile=_PROFILE,
+                capacity=[int(instance.capacity)],
+                costs=vroom.VehicleCosts(fixed=fixed),
+            )
+        )
+
+    return problem, None

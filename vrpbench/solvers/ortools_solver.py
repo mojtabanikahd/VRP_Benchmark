@@ -18,16 +18,21 @@ import time
 
 import numpy as np
 
-from vrpbench.core.instance import CVRP, MDVRP, VRPTW, Instance
+from vrpbench.core.instance import CVRP, MDVRP, VRPMPD, VRPTW, Instance
 from vrpbench.core.solution import Solution
-from vrpbench.solvers.base import SolverError, mdvrp_vehicles_per_depot
+from vrpbench.solvers.base import (
+    SolverError,
+    lexicographic_fixed_cost,
+    mdvrp_vehicles_per_depot,
+    vrpmpd_max_vehicles,
+)
 
-_SCALE = {CVRP: 1, VRPTW: 10, MDVRP: 1}
+_SCALE = {CVRP: 1, VRPTW: 10, MDVRP: 1, VRPMPD: 1}
 
 
 class OrToolsSolver:
     name = "ortools"
-    supported_variants = (CVRP, VRPTW, MDVRP)
+    supported_variants = (CVRP, VRPTW, MDVRP, VRPMPD)
 
     def solve(self, instance: Instance, *, time_budget_s: float, seed: int) -> Solution:
         from ortools.constraint_solver import pywrapcp, routing_enums_pb2
@@ -40,6 +45,11 @@ class OrToolsSolver:
         depot = instance.depot
         dist = np.rint(instance.distance * scale).astype(np.int64)
         demands = instance.demands.astype(np.int64)
+
+        if instance.variant == VRPMPD:
+            return _solve_vrpmpd(
+                pywrapcp, routing_enums_pb2, instance, dist, scale, time_budget_s
+            )
 
         if instance.variant == MDVRP:
             # One block of vehicles per depot, each fixed to start and end at its
@@ -168,3 +178,110 @@ def _extract_routes(
             routes.append(route)
             route_depots.append(depot_node)
     return routes, route_depots
+
+
+def _solve_vrpmpd(
+    pywrapcp, routing_enums_pb2, instance: Instance, dist: np.ndarray, scale: int, time_budget_s: float
+) -> Solution:
+    """VRPMPD solver: two-dimension model enforcing position-dependent capacity.
+
+    The physical load changes along a route (starts at Σ deliveries, decreases at
+    delivery stops, increases at pickup stops).  OR-Tools has no built-in mixed
+    pickup/delivery node concept, so we model it with two linked dimensions:
+
+    * ``Deliveries`` (fix_start_cumul=True, cap=Q): transit ``delivery[i]``.
+      ``Cumul(End[v])`` = total deliveries on route v.
+    * ``Load`` (fix_start_cumul=False, cap=Q): transit ``pickup[i] - delivery[i]``
+      (may be negative, so transit is registered as a signed arc callback).
+      Per vehicle: ``Cumul(Start[v]) == Deliveries.Cumul(End[v])``, pinning the
+      start load to the route's total deliveries.  The bound ``[0, Q]`` on every
+      ``Load`` cumul then exactly enforces the physical load at every stop.
+
+    The fixed vehicle cost implements the lexicographic objective (vehicles first).
+    The reported objective strips the fixed cost so ``obj_mismatch ≈ 0``.
+    """
+    n = instance.num_nodes
+    depot = instance.depot
+    num_vehicles = vrpmpd_max_vehicles(instance)
+    deliveries = instance.deliveries
+    pickups = instance.pickups
+    assert deliveries is not None and pickups is not None
+
+    deliveries_int = (deliveries * scale).astype(np.int64)
+    pickups_int = (pickups * scale).astype(np.int64)
+    capacity = int(instance.capacity * scale)
+    fixed = lexicographic_fixed_cost(dist, n)
+
+    manager = pywrapcp.RoutingIndexManager(n, num_vehicles, depot)
+    routing = pywrapcp.RoutingModel(manager)
+
+    # Arc cost = distance.
+    def distance_cb(from_idx: int, to_idx: int) -> int:
+        return int(dist[manager.IndexToNode(from_idx), manager.IndexToNode(to_idx)])
+
+    transit_idx = routing.RegisterTransitCallback(distance_cb)
+    routing.SetArcCostEvaluatorOfAllVehicles(transit_idx)
+    routing.SetFixedCostOfAllVehicles(fixed)
+
+    # Deliveries dimension: cumul = deliveries picked up so far from depot start.
+    def delivery_cb(idx: int) -> int:
+        return int(deliveries_int[manager.IndexToNode(idx)])
+
+    delivery_transit = routing.RegisterUnaryTransitCallback(delivery_cb)
+    routing.AddDimensionWithVehicleCapacity(
+        delivery_transit, 0, [capacity] * num_vehicles, True, "Deliveries"
+    )
+    deliveries_dim = routing.GetDimensionOrDie("Deliveries")
+
+    # Load dimension: transit = pickup[i] - delivery[i] (signed).
+    # fix_start_cumul_to_zero=False so we can pin the start via constraint.
+    def load_transit_cb(from_idx: int, to_idx: int) -> int:
+        node = manager.IndexToNode(from_idx)
+        return int(pickups_int[node]) - int(deliveries_int[node])
+
+    load_transit = routing.RegisterTransitCallback(load_transit_cb)
+    routing.AddDimension(load_transit, 0, capacity, False, "Load")
+    load_dim = routing.GetDimensionOrDie("Load")
+
+    # Pin Load.Cumul(Start[v]) == Deliveries.Cumul(End[v]) for each vehicle so the
+    # start load equals the total deliveries on that route (physical constraint).
+    solver = routing.solver()
+    for v in range(num_vehicles):
+        solver.Add(
+            load_dim.CumulVar(routing.Start(v))
+            == deliveries_dim.CumulVar(routing.End(v))
+        )
+        # Ensure Load stays non-negative (lower bound 0 on every node).
+        load_dim.CumulVar(routing.Start(v)).SetMin(0)
+
+    params = pywrapcp.DefaultRoutingSearchParameters()
+    params.first_solution_strategy = (
+        routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
+    )
+    params.local_search_metaheuristic = (
+        routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
+    )
+    params.time_limit.FromMilliseconds(max(1, int(time_budget_s * 1000)))
+    params.log_search = False
+
+    t0 = time.perf_counter()
+    sol = routing.SolveWithParameters(params)
+    runtime_s = time.perf_counter() - t0
+
+    if sol is None:
+        raise SolverError("OR-Tools found no VRPMPD solution within the time budget")
+
+    routes, _ = _extract_routes(routing, manager, sol, num_vehicles)
+    num_used = len(routes)
+
+    # Strip fixed costs from the objective to get pure travel distance.
+    raw_obj = float(sol.ObjectiveValue())
+    travel_obj = (raw_obj - fixed * num_used) / scale
+
+    return Solution(
+        routes=routes,
+        objective=travel_obj,
+        feasible=True,
+        runtime_s=runtime_s,
+        route_depots=[],
+    )

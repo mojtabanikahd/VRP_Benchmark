@@ -19,12 +19,13 @@ from pathlib import Path
 import numpy as np
 import vrplib
 
-from vrpbench.core.instance import CVRP, MDVRP, VRPTW, Instance
+from vrpbench.core.instance import CVRP, MDVRP, VRPTW, VRPMPD, Instance
 
 # Map file extension -> (vrplib format, our variant).
 _EXT_FORMAT = {
     ".vrp": ("vrplib", CVRP),
     ".txt": ("solomon", VRPTW),
+    ".vrpmpd": ("vrpmpd", VRPMPD),
 }
 
 
@@ -48,9 +49,17 @@ def load(path: str | os.PathLike, variant: str | None = None) -> Instance:
     MDVRP files share the ``.txt`` extension with Solomon VRPTW, so MDVRP cannot
     be inferred from the extension — it must be requested explicitly via
     ``variant=MDVRP``, which dispatches to the Cordeau parser below.
+    VRPMPD files use the unique ``.vrpmpd`` extension and are dispatched
+    automatically (no explicit ``variant`` needed).
     """
     if variant == MDVRP:
         return _load_cordeau_mdvrp(path)
+    if Path(path).suffix.lower() == ".vrpmpd":
+        if variant is not None and variant != VRPMPD:
+            raise ValueError(
+                f"{path}: declared variant {variant!r} but file extension is .vrpmpd"
+            )
+        return _load_vrpmpd(path)
 
     fmt, detected = detect_format(path)
     if variant is not None and variant != detected:
@@ -177,5 +186,123 @@ def _load_cordeau_mdvrp(path: str | os.PathLike) -> Instance:
         depot=0,
         depot_indices=tuple(range(num_depots)),
         num_vehicles=None,
+        source_path=str(path),
+    )
+
+
+def _load_vrpmpd(path: str | os.PathLike) -> Instance:
+    """Parse a VRPMPD instance in the LKH-3 / Salhi-Nagy `.vrpmpd` format.
+
+    Layout (section-based; depot is always file node id 1 = internal index 0):
+
+        NAME : <name>
+        DIMENSION : <n>      # total nodes incl. depot
+        VEHICLES : <k>       # fleet hint (not a hard cap)
+        CAPACITY : <Q>
+        EDGE_WEIGHT_TYPE : EXACT_2D
+        NODE_COORD_SECTION
+        <id> <x> <y>         # DIMENSION lines, 1-indexed
+        PICKUP_AND_DELIVERY_SECTION
+        <id> <demand> <early> <late> <service> <pickup> <delivery>
+                             # fields 6 and 7 are used; others ignored
+        DEPOT_SECTION
+        1                    # depot node id -> internal index 0
+        -1
+        EOF
+
+    Distance matrix: integer-rounded Euclidean (matches CVRP/MDVRP convention).
+    """
+    text = Path(path).read_text(encoding="utf-8")
+    lines = text.splitlines()
+
+    # --- Parse header key-value pairs -----------------------------------------
+    header: dict[str, str] = {}
+    section: str | None = None
+    coord_lines: list[str] = []
+    pd_lines: list[str] = []
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped == "EOF":
+            continue
+
+        # Detect section headers
+        upper = stripped.upper()
+        if upper == "NODE_COORD_SECTION":
+            section = "coords"
+            continue
+        if upper == "PICKUP_AND_DELIVERY_SECTION":
+            section = "pd"
+            continue
+        if upper == "DEPOT_SECTION":
+            section = "depot"
+            continue
+
+        if section is None:
+            # Header key : value line
+            if ":" in stripped:
+                key, _, val = stripped.partition(":")
+                header[key.strip().upper()] = val.strip()
+        elif section == "coords":
+            coord_lines.append(stripped)
+        elif section == "pd":
+            pd_lines.append(stripped)
+        # depot section rows are not needed (always node 1 -> index 0)
+
+    n = int(header["DIMENSION"])
+    capacity = int(header["CAPACITY"])
+    num_vehicles = int(header["VEHICLES"]) if "VEHICLES" in header else None
+    name = header.get("NAME") or Path(path).stem
+
+    # --- Coordinates (1-indexed ids; sort by id to build 0-indexed array) -----
+    id_to_coord: dict[int, tuple[float, float]] = {}
+    for row in coord_lines:
+        parts = row.split()
+        node_id, x, y = int(parts[0]), float(parts[1]), float(parts[2])
+        id_to_coord[node_id] = (x, y)
+
+    if len(id_to_coord) != n:
+        raise ValueError(
+            f"{path}: NODE_COORD_SECTION has {len(id_to_coord)} nodes, expected {n}"
+        )
+
+    # Build coords in id order; id k -> internal index k-1 (depot id 1 -> 0).
+    coords = np.array([id_to_coord[i] for i in range(1, n + 1)], dtype=float)
+
+    # --- Pickup and delivery per node -----------------------------------------
+    # field indices: 0=id, 1=demand(ignored), 2=early(ignored), 3=late(ignored),
+    #                4=service(ignored), 5=pickup, 6=delivery
+    pickups_arr = np.zeros(n, dtype=int)
+    deliveries_arr = np.zeros(n, dtype=int)
+
+    for row in pd_lines:
+        parts = row.split()
+        node_id = int(parts[0])
+        pickup = int(parts[5])
+        delivery = int(parts[6])
+        idx = node_id - 1  # 1-indexed -> 0-indexed
+        pickups_arr[idx] = pickup
+        deliveries_arr[idx] = delivery
+
+    # Depot (index 0) must have zero pickup and delivery.
+    pickups_arr[0] = 0
+    deliveries_arr[0] = 0
+
+    # Distance: integer-rounded Euclidean (same convention as CVRP/MDVRP).
+    diff = coords[:, None, :] - coords[None, :, :]
+    distance = np.rint(np.sqrt((diff**2).sum(axis=2)))
+
+    return Instance(
+        name=name,
+        variant=VRPMPD,
+        num_nodes=n,
+        coords=coords,
+        demands=deliveries_arr,   # mirrors deliveries for interface compatibility
+        capacity=capacity,
+        distance=distance,
+        depot=0,
+        num_vehicles=num_vehicles,
+        pickups=pickups_arr,
+        deliveries=deliveries_arr,
         source_path=str(path),
     )

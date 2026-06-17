@@ -14,12 +14,38 @@ from __future__ import annotations
 import math
 from typing import Protocol, runtime_checkable
 
+import numpy as np
+
 from vrpbench.core.instance import Instance
 from vrpbench.core.solution import Solution
 
 
 class SolverError(RuntimeError):
     """Raised when a solver fails to produce a solution."""
+
+
+def vrpmpd_max_vehicles(instance: Instance) -> int:
+    """Generous-but-bounded fleet for VRPMPD, shared by all three adapters.
+
+    Each vehicle must carry at most ``Q`` units; at minimum ``ceil(ΣD/Q)`` routes
+    are needed to deliver all goods and ``ceil(ΣP/Q)`` routes to collect all
+    pickups.  Adding 1 gives a comfortable headroom so the search is never
+    infeasible due to the fleet cap, while keeping the pool much smaller than
+    one-vehicle-per-customer (which blows OR-Tools/VROOM construction time).
+    """
+    total_d = int(instance.deliveries.sum()) if instance.deliveries is not None else 0
+    total_p = int(instance.pickups.sum()) if instance.pickups is not None else 0
+    return max(2, math.ceil(total_d / instance.capacity) + math.ceil(total_p / instance.capacity) + 1)
+
+
+def lexicographic_fixed_cost(dist_int: np.ndarray, n: int) -> int:
+    """Per-vehicle fixed cost that makes minimizing vehicles lexicographically primary.
+
+    The cost is larger than any achievable total travel distance for this instance
+    (``n * max_arc + 1``), so paying for one fewer vehicle always beats any distance
+    saving.
+    """
+    return int(n) * int(dist_int.max()) + 1
 
 
 def mdvrp_vehicles_per_depot(instance: Instance) -> int:
