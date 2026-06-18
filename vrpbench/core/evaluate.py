@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from vrpbench.core.instance import MDVRP, VRPMPD, VRPTW, Instance
+from vrpbench.core.instance import MDVRP, PVRP, VRPMPD, VRPTW, Instance
 from vrpbench.core.solution import Solution
 
 # Tolerance for comparing solver-reported vs recomputed objective.
@@ -60,42 +60,48 @@ def verify(instance: Instance, solution: Solution) -> Evaluation:
     """Recompute the objective and check all constraints independently."""
     violations: list[str] = []
 
-    # --- visiting constraints -------------------------------------------------
-    visited: list[int] = [c for r in solution.routes for c in r]
-    expected = set(instance.customers)
-    seen = set(visited)
-
-    if len(visited) != len(seen):
-        dupes = sorted({c for c in visited if visited.count(c) > 1})
-        violations.append(f"duplicate customers visited: {dupes}")
-    missing = sorted(expected - seen)
-    if missing:
-        violations.append(f"unvisited customers: {missing}")
-    extra = sorted(seen - expected)
-    if extra:
-        violations.append(f"invalid node indices in routes: {extra}")
-    depots = set(instance.depot_indices) if instance.depot_indices else {instance.depot}
-    if seen & depots:
-        violations.append("depot appears inside a route")
-
-    # --- capacity -------------------------------------------------------------
-    if instance.variant == VRPMPD:
-        violations.extend(_check_vrpmpd_capacity(instance, solution))
+    # PVRP needs variant-specific visiting logic (a customer is legitimately
+    # visited on several days), so the generic single-visit/capacity checks below
+    # do not apply; ``_check_pvrp`` is authoritative for every PVRP constraint.
+    if instance.variant == PVRP:
+        violations.extend(_check_pvrp(instance, solution))
     else:
-        for i, route in enumerate(solution.routes):
-            load = int(sum(instance.demands[c] for c in route if 0 <= c < instance.num_nodes))
-            if load > instance.capacity:
-                violations.append(
-                    f"route {i} load {load} exceeds capacity {instance.capacity}"
-                )
+        # --- visiting constraints ---------------------------------------------
+        visited: list[int] = [c for r in solution.routes for c in r]
+        expected = set(instance.customers)
+        seen = set(visited)
 
-    # --- multi-depot route assignment (MDVRP only) ---------------------------
-    if instance.variant == MDVRP:
-        violations.extend(_check_route_depots(instance, solution))
+        if len(visited) != len(seen):
+            dupes = sorted({c for c in visited if visited.count(c) > 1})
+            violations.append(f"duplicate customers visited: {dupes}")
+        missing = sorted(expected - seen)
+        if missing:
+            violations.append(f"unvisited customers: {missing}")
+        extra = sorted(seen - expected)
+        if extra:
+            violations.append(f"invalid node indices in routes: {extra}")
+        depots = set(instance.depot_indices) if instance.depot_indices else {instance.depot}
+        if seen & depots:
+            violations.append("depot appears inside a route")
 
-    # --- time windows (VRPTW only) -------------------------------------------
-    if instance.variant == VRPTW:
-        violations.extend(_check_time_windows(instance, solution))
+        # --- capacity ---------------------------------------------------------
+        if instance.variant == VRPMPD:
+            violations.extend(_check_vrpmpd_capacity(instance, solution))
+        else:
+            for i, route in enumerate(solution.routes):
+                load = int(sum(instance.demands[c] for c in route if 0 <= c < instance.num_nodes))
+                if load > instance.capacity:
+                    violations.append(
+                        f"route {i} load {load} exceeds capacity {instance.capacity}"
+                    )
+
+        # --- multi-depot route assignment (MDVRP only) -----------------------
+        if instance.variant == MDVRP:
+            violations.extend(_check_route_depots(instance, solution))
+
+        # --- time windows (VRPTW only) ---------------------------------------
+        if instance.variant == VRPTW:
+            violations.extend(_check_time_windows(instance, solution))
 
     # --- objective ------------------------------------------------------------
     objective = total_distance(instance, solution)
@@ -202,6 +208,95 @@ def _check_vrpmpd_capacity(instance: Instance, solution: Solution) -> list[str]:
                     f"route {i}: load {load} after customer {c} is negative"
                 )
                 break
+    return violations
+
+
+def _check_pvrp(instance: Instance, solution: Solution) -> list[str]:
+    """All PVRP constraints, using ``solution.route_days`` to place routes in days.
+
+    Verifies: each route names a valid day; ≤ ``m`` routes per day; per-route load
+    ≤ capacity; (new set) per-route travel+service ≤ ``max_route_duration``; no
+    depot inside a route; no invalid indices; and, per customer, the set of days it
+    is visited equals exactly one of its allowed day-combination bitmasks (which
+    subsumes the visit-frequency requirement, since each combination's popcount is
+    the frequency).
+    """
+    violations: list[str] = []
+    routes = solution.routes
+    days = solution.route_days
+    t = int(instance.periods)
+    m = int(instance.max_vehicles_per_day)
+    cap = int(instance.capacity)
+    combos = instance.combinations
+    maxdur = instance.max_route_duration or 0.0
+    svc = instance.service_times
+    assert combos is not None
+
+    if len(days) != len(routes):
+        violations.append(
+            f"route_days length {len(days)} does not match {len(routes)} routes"
+        )
+        return violations
+
+    expected = set(instance.customers)
+
+    # Invalid indices / depot-inside-route.
+    seen = [c for r in routes for c in r]
+    bad = sorted({c for c in seen if not (0 <= c < instance.num_nodes)})
+    if bad:
+        violations.append(f"invalid node indices in routes: {bad}")
+    if instance.depot in seen:
+        violations.append("depot appears inside a route")
+
+    # Vehicle cap per day.
+    routes_per_day = [0] * t
+    for d in days:
+        if 0 <= d < t:
+            routes_per_day[d] += 1
+        else:
+            violations.append(f"route assigned to invalid day {d}")
+    for d in range(t):
+        if routes_per_day[d] > m:
+            violations.append(
+                f"day {d}: {routes_per_day[d]} routes exceed max vehicles/day {m}"
+            )
+
+    # Per-route capacity and (new set) duration.
+    for i, (route, d) in enumerate(zip(routes, days)):
+        if not route:
+            continue
+        load = int(sum(instance.demands[c] for c in route if 0 <= c < instance.num_nodes))
+        if load > cap:
+            violations.append(f"day {d} route {i} load {load} exceeds capacity {cap}")
+        if maxdur > 0:
+            assert svc is not None
+            travel = route_distance(instance, route, instance.depot)
+            service = float(sum(svc[c] for c in route if 0 <= c < instance.num_nodes))
+            if travel + service > maxdur + OBJ_EPS:
+                violations.append(
+                    f"day {d} route {i} duration {travel + service:.3f} exceeds "
+                    f"max route duration {maxdur:.3f}"
+                )
+
+    # Per-customer visit pattern must equal exactly one allowed combination.
+    visit_days: dict[int, set[int]] = {c: set() for c in expected}
+    for route, d in zip(routes, days):
+        if not (0 <= d < t):
+            continue
+        for c in route:
+            if c in visit_days:
+                if d in visit_days[c]:
+                    violations.append(f"customer {c} visited twice on day {d}")
+                visit_days[c].add(d)
+    for c in sorted(expected):
+        mask = 0
+        for d in visit_days[c]:
+            mask |= 1 << d
+        if mask not in combos[c]:
+            violations.append(
+                f"customer {c} visit pattern {sorted(visit_days[c])} is not an "
+                f"allowed combination (freq {int(instance.freq[c])})"
+            )
     return violations
 
 

@@ -216,8 +216,9 @@ def _build_input(instance: Instance, scale: int):
 
     # Generous fleet: one vehicle per customer is a safe feasibility upper bound;
     # the distance objective drives VROOM to use as few as it needs (extras stay
-    # empty and are dropped during extraction).
-    num_vehicles = max(1, n - 1)
+    # empty and are dropped during extraction). A PVRP day sub-instance instead
+    # sets ``max_vehicles`` as a hard per-day cap (m).
+    num_vehicles = instance.max_vehicles if instance.max_vehicles is not None else max(1, n - 1)
     for v in range(num_vehicles):
         kwargs = dict(
             id=v,

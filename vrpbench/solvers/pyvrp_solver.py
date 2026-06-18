@@ -145,8 +145,9 @@ def _build_data(pyvrp, instance: Instance, scale: int):
         vehicle_tw = None
 
     # Generous fleet: one vehicle per customer is a safe feasibility upper bound;
-    # the objective (distance) drives PyVRP to use as few as it needs.
-    num_vehicles = max(1, n - 1)
+    # the objective (distance) drives PyVRP to use as few as it needs. A PVRP day
+    # sub-instance instead sets ``max_vehicles`` as a hard per-day cap (m).
+    num_vehicles = instance.max_vehicles if instance.max_vehicles is not None else max(1, n - 1)
     vt_kwargs = dict(num_available=num_vehicles, capacity=[int(instance.capacity)])
     if vehicle_tw is not None:
         vt_kwargs.update(tw_early=vehicle_tw[0], tw_late=vehicle_tw[1])

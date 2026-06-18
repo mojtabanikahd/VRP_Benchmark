@@ -1,0 +1,16 @@
+# PVRP smoke: the three PVRP wrappers (ALNS over day-combination assignments,
+# base solver routes each day) on one small old instance (no duration limit) and
+# one small new instance (route-duration limit -> VRPTW day sub-instances).
+# VRPSolverEasy is excluded from PVRP (no multi-period model; see CLAUDE.md).
+run_id: pvrp_smoke
+seeds: [0]
+time_budget:
+  base_s: 10
+  per_node_ms: 0
+results_dir: results
+solvers: [pvrp_pyvrp, pvrp_ortools, pvrp_vroom]
+datasets:
+  - variant: PVRP
+    instances:
+      - data/instances/PVRP/old/p01.txt    # t=2, n=51, maxdur=0
+      - data/instances/PVRP/new/pr01.txt   # t=4, n=48, maxdur=500

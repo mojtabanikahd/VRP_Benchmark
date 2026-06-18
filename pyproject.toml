@@ -13,6 +13,7 @@ dependencies = [
     "pyvrp>=0.9,<0.12",
     "ortools>=9.10,<10",
     "pyyaml>=6.0,<7",
+    "alns>=7,<8",
 ]
 
 [project.optional-dependencies]

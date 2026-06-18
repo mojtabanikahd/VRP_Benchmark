@@ -14,7 +14,7 @@ from pathlib import Path
 
 import yaml
 
-from vrpbench.core.instance import MDVRP, VARIANTS
+from vrpbench.core.instance import MDVRP, PVRP, VARIANTS
 from vrpbench.datasets.loader import detect_format
 from vrpbench.solvers import SOLVERS, get_solver
 
@@ -103,9 +103,9 @@ def _validate(cfg: ExperimentConfig) -> None:
             p = Path(inst_path)
             if not p.exists():
                 raise ValueError(f"config: instance file not found: {inst_path}")
-            # MDVRP shares the .txt extension with Solomon VRPTW, so it cannot be
-            # inferred from the file; the declared variant is authoritative.
-            if group.variant != MDVRP:
+            # MDVRP and PVRP share the .txt extension with Solomon VRPTW, so they
+            # cannot be inferred from the file; the declared variant is authoritative.
+            if group.variant not in (MDVRP, PVRP):
                 _, detected = detect_format(inst_path)
                 if detected != group.variant:
                     raise ValueError(

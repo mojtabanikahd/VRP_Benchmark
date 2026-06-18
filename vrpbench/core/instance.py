@@ -18,7 +18,8 @@ CVRP = "CVRP"
 VRPTW = "VRPTW"
 MDVRP = "MDVRP"
 VRPMPD = "VRPMPD"
-VARIANTS = (CVRP, VRPTW, MDVRP, VRPMPD)
+PVRP = "PVRP"
+VARIANTS = (CVRP, VRPTW, MDVRP, VRPMPD, PVRP)
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,17 @@ class Instance:
     # VRPMPD-only (None for CVRP/VRPTW/MDVRP):
     pickups: np.ndarray | None = None    # (n,) int; depot entry is 0
     deliveries: np.ndarray | None = None  # (n,) int; depot entry is 0
+    # PVRP-only (None for the other variants):
+    periods: int | None = None  # planning horizon t (number of days)
+    freq: np.ndarray | None = None  # (n,) int; visits required per node; depot 0
+    # per node: list of valid day-combination bitmasks over t days; depot is [].
+    combinations: list[list[int]] | None = None
+    max_vehicles_per_day: int | None = None  # m; hard cap on routes per day
+    max_route_duration: float | None = None  # 0 = unlimited (old set); >0 = new set
+    # Generic optional hard fleet cap, honoured by the CVRP/VRPTW adapter build
+    # paths when set. Only PVRP day sub-instances set it (so it never collides with
+    # the ``num_vehicles`` hint used by existing variants).
+    max_vehicles: int | None = None
     # Original instance file, when loaded from disk (used by file-based solvers).
     source_path: str | None = None
 
@@ -89,6 +101,26 @@ class Instance:
                 raise ValueError(f"pickups must be ({n},), got {self.pickups.shape}")
             if self.deliveries.shape != (n,):
                 raise ValueError(f"deliveries must be ({n},), got {self.deliveries.shape}")
+        if self.variant == PVRP:
+            if self.periods is None or self.periods < 1:
+                raise ValueError("PVRP instance requires periods >= 1")
+            if self.max_vehicles_per_day is None or self.max_vehicles_per_day < 1:
+                raise ValueError("PVRP instance requires max_vehicles_per_day >= 1")
+            if self.freq is None or self.freq.shape != (n,):
+                raise ValueError(f"PVRP freq must be ({n},), got {None if self.freq is None else self.freq.shape}")
+            if self.combinations is None or len(self.combinations) != n:
+                raise ValueError(
+                    f"PVRP combinations must have {n} entries, got "
+                    f"{None if self.combinations is None else len(self.combinations)}"
+                )
+            if self.max_route_duration is None or self.max_route_duration < 0:
+                raise ValueError("PVRP instance requires max_route_duration >= 0")
+            if self.max_route_duration > 0:
+                if self.service_times is None or self.service_times.shape != (n,):
+                    raise ValueError(
+                        "PVRP with a route-duration limit requires service_times of "
+                        f"shape ({n},)"
+                    )
 
     @property
     def customers(self) -> range:

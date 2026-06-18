@@ -1,0 +1,60 @@
+# PVRP full benchmark: all 42 Cordeau instances (old p01-p32, new pr01-pr10)
+# across the three PVRP wrappers. Flat per-instance budget (no per-node scaling).
+#
+# NOTE ON COST: each PVRPSolver runs t inner routing solves per ALNS iteration
+# (t up to 10), and the largest instances are big (p13: n=417, t=7; pr06/pr10:
+# n=288). Per-day solution caching limits re-solves, but expect the giants to
+# complete only a modest number of ALNS iterations at this budget. Raise base_s
+# (or drop the largest instances) for a deeper search.
+run_id: pvrp_benchmark
+seeds: [0]
+time_budget:
+  base_s: 60
+  per_node_ms: 0
+results_dir: results
+solvers: [pvrp_pyvrp, pvrp_ortools, pvrp_vroom]
+datasets:
+  - variant: PVRP
+    instances:
+      - data/instances/PVRP/old/p01.txt
+      - data/instances/PVRP/old/p02.txt
+      - data/instances/PVRP/old/p03.txt
+      - data/instances/PVRP/old/p04.txt
+      - data/instances/PVRP/old/p05.txt
+      - data/instances/PVRP/old/p06.txt
+      - data/instances/PVRP/old/p07.txt
+      - data/instances/PVRP/old/p08.txt
+      - data/instances/PVRP/old/p09.txt
+      - data/instances/PVRP/old/p10.txt
+      - data/instances/PVRP/old/p11.txt
+      - data/instances/PVRP/old/p12.txt
+      - data/instances/PVRP/old/p13.txt
+      - data/instances/PVRP/old/p14.txt
+      - data/instances/PVRP/old/p15.txt
+      - data/instances/PVRP/old/p16.txt
+      - data/instances/PVRP/old/p17.txt
+      - data/instances/PVRP/old/p18.txt
+      - data/instances/PVRP/old/p19.txt
+      - data/instances/PVRP/old/p20.txt
+      - data/instances/PVRP/old/p21.txt
+      - data/instances/PVRP/old/p22.txt
+      - data/instances/PVRP/old/p23.txt
+      - data/instances/PVRP/old/p24.txt
+      - data/instances/PVRP/old/p25.txt
+      - data/instances/PVRP/old/p26.txt
+      - data/instances/PVRP/old/p27.txt
+      - data/instances/PVRP/old/p28.txt
+      - data/instances/PVRP/old/p29.txt
+      - data/instances/PVRP/old/p30.txt
+      - data/instances/PVRP/old/p31.txt
+      - data/instances/PVRP/old/p32.txt
+      - data/instances/PVRP/new/pr01.txt
+      - data/instances/PVRP/new/pr02.txt
+      - data/instances/PVRP/new/pr03.txt
+      - data/instances/PVRP/new/pr04.txt
+      - data/instances/PVRP/new/pr05.txt
+      - data/instances/PVRP/new/pr06.txt
+      - data/instances/PVRP/new/pr07.txt
+      - data/instances/PVRP/new/pr08.txt
+      - data/instances/PVRP/new/pr09.txt
+      - data/instances/PVRP/new/pr10.txt

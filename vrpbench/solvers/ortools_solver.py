@@ -87,9 +87,18 @@ class OrToolsSolver:
             )
 
         params = pywrapcp.DefaultRoutingSearchParameters()
-        params.first_solution_strategy = (
-            routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
-        )
+        if instance.max_vehicles is not None:
+            # PVRP day sub-instance: a hard fleet cap of m with tight capacity (and,
+            # on the new set, time windows) makes PATH_CHEAPEST_ARC frequently fail
+            # to even construct a feasible first solution; the savings heuristic is
+            # far more robust for these constrained, fixed-fleet single-day problems.
+            params.first_solution_strategy = (
+                routing_enums_pb2.FirstSolutionStrategy.SAVINGS
+            )
+        else:
+            params.first_solution_strategy = (
+                routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
+            )
         params.local_search_metaheuristic = (
             routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
         )
@@ -154,7 +163,13 @@ def _add_time_windows(routing, manager, instance, dist, scale, num_vehicles) -> 
 
 
 def _vehicle_count(instance: Instance) -> int:
-    """Enough vehicles to guarantee a feasible solution exists."""
+    """Enough vehicles to guarantee a feasible solution exists.
+
+    A PVRP day sub-instance sets ``max_vehicles`` as a hard per-day cap (m); it is
+    honoured exactly so OR-Tools never exceeds the available fleet for that day.
+    """
+    if instance.max_vehicles is not None:
+        return max(1, instance.max_vehicles)
     min_by_capacity = math.ceil(int(instance.demands.sum()) / instance.capacity)
     declared = instance.num_vehicles or 0
     return max(1, declared, min_by_capacity)

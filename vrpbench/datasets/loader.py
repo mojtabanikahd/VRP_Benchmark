@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 import vrplib
 
-from vrpbench.core.instance import CVRP, MDVRP, VRPTW, VRPMPD, Instance
+from vrpbench.core.instance import CVRP, MDVRP, PVRP, VRPTW, VRPMPD, Instance
 
 # Map file extension -> (vrplib format, our variant).
 _EXT_FORMAT = {
@@ -46,14 +46,16 @@ def load(path: str | os.PathLike, variant: str | None = None) -> Instance:
     ``variant`` may be passed to override extension-based detection; it must then
     match the detected variant (guards against mislabelled config entries).
 
-    MDVRP files share the ``.txt`` extension with Solomon VRPTW, so MDVRP cannot
-    be inferred from the extension — it must be requested explicitly via
-    ``variant=MDVRP``, which dispatches to the Cordeau parser below.
-    VRPMPD files use the unique ``.vrpmpd`` extension and are dispatched
+    MDVRP and PVRP files share the ``.txt`` extension with Solomon VRPTW, so they
+    cannot be inferred from the extension — they must be requested explicitly via
+    ``variant=MDVRP`` / ``variant=PVRP``, which dispatch to the Cordeau parsers
+    below. VRPMPD files use the unique ``.vrpmpd`` extension and are dispatched
     automatically (no explicit ``variant`` needed).
     """
     if variant == MDVRP:
         return _load_cordeau_mdvrp(path)
+    if variant == PVRP:
+        return _load_pvrp(path)
     if Path(path).suffix.lower() == ".vrpmpd":
         if variant is not None and variant != VRPMPD:
             raise ValueError(
@@ -186,6 +188,87 @@ def _load_cordeau_mdvrp(path: str | os.PathLike) -> Instance:
         depot=0,
         depot_indices=tuple(range(num_depots)),
         num_vehicles=None,
+        source_path=str(path),
+    )
+
+
+def _load_pvrp(path: str | os.PathLike) -> Instance:
+    """Parse a Cordeau Periodic VRP instance (``http://neumann.hec.ca/chairedistributique``).
+
+    Layout (whitespace-separated; see CLAUDE.md):
+
+        type  m  n  t              # type (ignore), m vehicles/day, n customers,
+                                   # t planning periods (days)
+        maxdur  cap                # repeated t times (uniform across days)
+        0  x y  svc dem  0 0       # depot is node id 0 FIRST (demand/freq 0)
+        i  x y  svc dem  f K c1..cK  # n customers, ids 1..n; K = number of valid
+                                   # day-combination bitmasks, then the K codes
+
+    Unlike the MDVRP layout, the depot is the *first* data line (internal index 0)
+    and each customer line is variable-width (``7 + K`` tokens), so the file is read
+    as a flat token stream: read ``freq`` and ``K``, then exactly ``K`` combination
+    codes. Coordinates are read as floats (covers integer ``old`` and float ``new``
+    sets) and the distance matrix is integer-rounded Euclidean over all nodes — the
+    same EUC_2D convention used for CVRP/MDVRP/VRPMPD, keeping the solvers
+    byte-identical (scale 1) and the evaluator's re-score consistent.
+    """
+    tokens = iter(Path(path).read_text(encoding="utf-8").split())
+
+    next(tokens)  # type — ignored
+    max_vehicles_per_day = int(next(tokens))  # m vehicles per day (hard cap)
+    num_customers = int(next(tokens))
+    periods = int(next(tokens))
+
+    capacity = None
+    max_route_duration = None
+    for _ in range(periods):
+        dur = float(next(tokens))  # max route duration (0 = unlimited)
+        cap = int(next(tokens))    # vehicle capacity (uniform across days)
+        capacity = cap if capacity is None else capacity
+        max_route_duration = dur if max_route_duration is None else max_route_duration
+
+    # Depot (id 0) + n customers (ids 1..n) = n + 1 data lines.
+    num_nodes = num_customers + 1
+    coords: list[tuple[float, float]] = []
+    demands: list[int] = []
+    services: list[float] = []
+    freqs: list[int] = []
+    combinations: list[list[int]] = []
+    for _ in range(num_nodes):
+        next(tokens)  # node id (file-local, sequential 0..n; ignored)
+        x = float(next(tokens))
+        y = float(next(tokens))
+        svc = float(next(tokens))
+        dem = int(float(next(tokens)))
+        freq = int(float(next(tokens)))
+        k = int(float(next(tokens)))
+        combos = [int(float(next(tokens))) for _ in range(k)]
+        coords.append((x, y))
+        demands.append(dem)
+        services.append(svc)
+        freqs.append(freq)
+        combinations.append(combos)
+
+    coords_arr = np.asarray(coords, dtype=float)
+    diff = coords_arr[:, None, :] - coords_arr[None, :, :]
+    distance = np.rint(np.sqrt((diff**2).sum(axis=2)))
+
+    return Instance(
+        name=Path(path).stem,
+        variant=PVRP,
+        num_nodes=num_nodes,
+        coords=coords_arr,
+        demands=np.asarray(demands, dtype=int),
+        capacity=int(capacity),
+        distance=distance,
+        depot=0,
+        num_vehicles=None,
+        service_times=np.asarray(services, dtype=float),
+        periods=periods,
+        freq=np.asarray(freqs, dtype=int),
+        combinations=combinations,
+        max_vehicles_per_day=max_vehicles_per_day,
+        max_route_duration=float(max_route_duration),
         source_path=str(path),
     )
 

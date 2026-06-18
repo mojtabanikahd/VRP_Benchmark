@@ -37,11 +37,26 @@ def _make_vrpsolvereasy() -> Solver:
     return VRPSolverEasySolver()
 
 
+def _make_pvrp(base_factory) -> "callable[[], Solver]":
+    """Build a factory for a PVRP wrapper around a base solver factory."""
+
+    def factory() -> Solver:
+        from vrpbench.solvers.pvrp_solver import PVRPSolver
+
+        return PVRPSolver(base_factory())
+
+    return factory
+
+
 SOLVERS: dict[str, "callable[[], Solver]"] = {
     "pyvrp": _make_pyvrp,
     "ortools": _make_ortools,
     "vroom": _make_vroom,
     "vrpsolvereasy": _make_vrpsolvereasy,
+    # Periodic VRP: ALNS over day-combination assignments, base solver routes days.
+    "pvrp_pyvrp": _make_pvrp(_make_pyvrp),
+    "pvrp_ortools": _make_pvrp(_make_ortools),
+    "pvrp_vroom": _make_pvrp(_make_vroom),
 }
 
 
