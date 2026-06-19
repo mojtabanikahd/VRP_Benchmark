@@ -3,7 +3,7 @@
 # (per-type duration limits). VRPSolverEasy is excluded from SDVRP (no native
 # site-dependent / split-delivery model; see CLAUDE.md).
 run_id: sdvrp_smoke
-seeds: [0]
+seeds: [0, 1,]
 time_budget:
   base_s: 10
   per_node_ms: 0

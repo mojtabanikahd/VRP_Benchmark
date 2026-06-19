@@ -45,9 +45,30 @@ python -m venv .venv
 
 # Full benchmark — all four solvers on the standard CVRP X-set + Solomon VRPTW set
 .venv\Scripts\python.exe -m vrpbench.cli --config experiments/benchmark.yaml
+
+# Run cells in parallel across 4 worker processes (~4× faster on a 4-core machine)
+.venv\Scripts\python.exe -m vrpbench.cli --config experiments/sdvrp_smoke.yaml --threads 4
 ```
 
 Results are appended incrementally to `results/results.csv` (one row per run).
+
+### Parallel execution (`--threads N`)
+
+The experiment grid (`instance × solver × seed`) is **embarrassingly parallel**: each cell is
+independent. Pass `--threads N` (alias `-j N`) to run up to `N` cells simultaneously across
+worker processes, cutting wall-clock time roughly N× on a multi-core machine.
+
+```powershell
+.venv\Scripts\python.exe -m vrpbench.cli --config experiments/benchmark.yaml --threads 8
+```
+
+- **Default is `--threads 1`** — the original sequential loop, byte-identical to previous behaviour.
+- The time budget per cell is **unchanged**: each worker runs on its own core and receives the
+  full `time_budget_s`. Keep `N ≤ physical cores` to avoid contention (the CLI warns if you exceed `os.cpu_count()`).
+- Result rows land in the CSV in **completion order** (not grid order) when `N > 1`; the set of
+  rows is identical to a sequential run.
+- A solve exception in one cell is captured as `status=error` and never aborts the batch —
+  the same guarantee as the sequential mode.
 
 ## Experiment config (YAML)
 
