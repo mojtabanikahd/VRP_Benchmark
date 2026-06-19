@@ -7,9 +7,9 @@
 # complete only a modest number of ALNS iterations at this budget. Raise base_s
 # (or drop the largest instances) for a deeper search.
 run_id: pvrp_benchmark
-seeds: [0]
+seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 time_budget:
-  base_s: 60
+  base_s: 10
   per_node_ms: 0
 results_dir: results
 solvers: [pvrp_pyvrp, pvrp_ortools, pvrp_vroom]

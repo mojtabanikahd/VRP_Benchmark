@@ -7,9 +7,9 @@
 # largest old instances (p13-class) and the new pr06/pr12 are the heavy ones; raise
 # base_s for a deeper search.
 run_id: sdvrp_benchmark
-seeds: [0]
+seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 time_budget:
-  base_s: 60
+  base_s: 10
   per_node_ms: 0
 results_dir: results
 solvers: [sdvrp_tabu, sdvrp_pyvrp, sdvrp_ortools, sdvrp_vroom]
