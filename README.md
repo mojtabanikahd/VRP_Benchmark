@@ -53,6 +53,33 @@ python -m venv .venv
 Results are appended incrementally to `results/results.csv` (one row per run). Re-running
 the same config **resumes** by default: cells already in the CSV are skipped (see below).
 
+### Running all benchmarks (Linux)
+
+`run_all_benchmarks.sh` runs all five full-benchmark configs sequentially — CVRP/VRPTW,
+VRPMPD, SDVRP, PVRP, and MDVRP — in a single invocation. Because every config appends to
+the same `results/results.csv`, the configs must run sequentially; `--threads` controls
+intra-experiment parallelism (cells within one config solved concurrently).
+
+```bash
+chmod +x run_all_benchmarks.sh
+
+# Use all available cores (detected via nproc)
+./run_all_benchmarks.sh
+
+# Explicit thread count
+./run_all_benchmarks.sh --threads 8
+
+# Re-run every cell, ignoring previously recorded results
+./run_all_benchmarks.sh --force
+
+# Both flags together
+./run_all_benchmarks.sh --threads 8 --force
+```
+
+The script auto-detects the Python interpreter (`.venv/bin/python` → `python3` → `python`),
+prints a timestamped header per config, and exits non-zero if any config fails (listing
+which ones).
+
 ### Resume (skip already-done cells)
 
 Every run reads `results/results.csv` at startup and skips any cell already recorded there,
