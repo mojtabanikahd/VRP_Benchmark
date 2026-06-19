@@ -9,7 +9,7 @@ solvers: [pyvrp, ortools]
 datasets:
   - variant: CVRP
     instances:
-      - data/instances/X-n101-k25.vrp
+      - data/instances/X/X-n101-k25.vrp
   - variant: VRPTW
     instances:
-      - data/instances/C101.txt
+      - data/instances/Solomon/C101.txt

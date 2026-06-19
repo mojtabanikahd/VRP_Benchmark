@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 import json
 
-from vrpbench.results.store import ResultStore, RunRecord
+from vrpbench.results.store import FIELDNAMES, ResultStore, RunRecord
 
 
 def _record(**kw) -> RunRecord:
@@ -58,3 +58,34 @@ def test_detail_json_written(tmp_path):
     assert len(files) == 1
     payload = json.loads(files[0].read_text())
     assert payload["routes"] == [[1, 2], [3]]
+
+
+def test_load_done_keys_missing_file(tmp_path):
+    assert ResultStore(tmp_path).load_done_keys() == frozenset()
+
+
+def test_load_done_keys_returns_exact_keys_regardless_of_status(tmp_path):
+    store = ResultStore(tmp_path)
+    store.append(_record(seed=0, status="ok"))
+    store.append(_record(seed=1, status="infeasible"))
+    store.append(_record(seed=2, status="error"))
+    assert store.load_done_keys() == frozenset(
+        {
+            ("toy", "CVRP", "pyvrp", 0),
+            ("toy", "CVRP", "pyvrp", 1),
+            ("toy", "CVRP", "pyvrp", 2),
+        }
+    )
+
+
+def test_load_done_keys_skips_malformed_seed(tmp_path):
+    store = ResultStore(tmp_path)
+    store.append(_record(seed=0))
+    # Append a row with a non-int seed straight to the CSV.
+    with (tmp_path / "results.csv").open("a", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=FIELDNAMES)
+        bad = _record(seed=1).csv_row()
+        bad["seed"] = "not-an-int"
+        writer.writerow(bad)
+    # The good row is present; the malformed one is dropped (so it would be re-run).
+    assert store.load_done_keys() == frozenset({("toy", "CVRP", "pyvrp", 0)})

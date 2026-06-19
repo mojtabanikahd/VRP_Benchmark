@@ -25,6 +25,14 @@ def main(argv: list[str] | None = None) -> int:
         default=1,
         help="number of parallel worker processes (default: 1 = sequential)",
     )
+    parser.add_argument(
+        "--force",
+        "--no-resume",
+        action="store_true",
+        dest="force",
+        help="re-run every cell, ignoring results already recorded in the CSV "
+        "(default: skip cells already present)",
+    )
     args = parser.parse_args(argv)
 
     if args.threads < 1:
@@ -37,7 +45,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     cfg = load_config(args.config)
-    failures = run_experiment(cfg, threads=args.threads)
+    failures = run_experiment(cfg, threads=args.threads, force=args.force)
     return 1 if failures else 0
 
 

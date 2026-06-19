@@ -13,6 +13,7 @@ from __future__ import annotations
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures.process import BrokenProcessPool
 from datetime import datetime, timezone
+from pathlib import Path
 
 from vrpbench.core import evaluate
 from vrpbench.datasets import loader
@@ -22,7 +23,7 @@ from vrpbench.runner.config import ExperimentConfig
 from vrpbench.solvers import get_solver
 
 
-def run_experiment(cfg: ExperimentConfig, threads: int = 1) -> int:
+def run_experiment(cfg: ExperimentConfig, threads: int = 1, force: bool = False) -> int:
     """Run all cells; return the number of cells that did not finish 'ok'.
 
     ``threads`` is the number of parallel worker processes. ``threads == 1``
@@ -30,6 +31,10 @@ def run_experiment(cfg: ExperimentConfig, threads: int = 1) -> int:
     ``threads > 1`` solves cells concurrently across a process pool — each cell
     is fully independent, so the only behavioural difference is that result rows
     land in completion order rather than grid order.
+
+    Resume: unless ``force`` is set, cells already recorded in the results CSV
+    (any status: ok / infeasible / error) are skipped, so an interrupted batch
+    can be restarted without recomputing finished work.
     """
     if threads < 1:
         raise ValueError(f"threads must be >= 1, got {threads}")
@@ -44,7 +49,25 @@ def run_experiment(cfg: ExperimentConfig, threads: int = 1) -> int:
         for name in cfg.solvers
         for seed in cfg.seeds
     ]
+
+    total_grid = len(cells)
+    if not force:
+        done = store.load_done_keys()
+        # Stem heuristic: instance_name == Path(path).stem (verified for all loaders/sets).
+        cells = [c for c in cells if (Path(c[1]).stem, c[0], c[2], c[3]) not in done]
+        skipped = total_grid - len(cells)
+        print(
+            f"Resume: {skipped}/{total_grid} cells already in {store.csv_path}; "
+            f"running {len(cells)} remaining."
+            + ("" if cells else " Nothing to do.")
+        )
+    else:
+        print(f"--force: ignoring existing rows; running all {total_grid} cells.")
+
     total = len(cells)
+    if total == 0:
+        print(f"\nDone: 0/0 ok, results in {store.csv_path}")
+        return 0
 
     if threads == 1:
         failures = _run_sequential(cfg, bks, store, cells, total)

@@ -75,3 +75,48 @@ def test_end_to_end_run(tmp_path):
         assert row["feasible"] == "True"
         assert float(row["objective"]) == pytest.approx(8.0)
         assert float(row["obj_mismatch"]) == pytest.approx(0.0, abs=1e-6)
+
+
+def _resume_config(tmp_path: Path):
+    # Two cells via two seeds of one reliable solver (pyvrp) — the resume logic is
+    # solver-agnostic, so this keeps the test deterministic and fast. toy-n4-k2.vrp
+    # has a NAME header equal to its filename stem (as every real benchmark file
+    # does), so the stem-heuristic resume filter matches the CSV.
+    results_dir = tmp_path / "results"
+    body = (
+        "run_id: test\n"
+        "seeds: [0, 1]\n"
+        "time_budget:\n  base_s: 1\n  per_node_ms: 0\n"
+        f"results_dir: '{results_dir.as_posix()}'\n"
+        "bks_path: 'data/bks.csv'\n"
+        "solvers: [pyvrp]\n"
+        "datasets:\n"
+        "  - variant: CVRP\n"
+        f"    instances: ['{(DATA / 'toy-n4-k2.vrp').as_posix()}']\n"
+    )
+    return load_config(_write_config(tmp_path, body)), results_dir
+
+
+def _row_count(results_dir: Path) -> int:
+    with (results_dir / "results.csv").open(newline="") as fh:
+        return len(list(csv.DictReader(fh)))
+
+
+def test_resume_skips_already_done_cells(tmp_path):
+    cfg, results_dir = _resume_config(tmp_path)
+    assert run_experiment(cfg) == 0
+    assert _row_count(results_dir) == 2
+
+    # Second run (default: resume) skips both done cells — no new rows.
+    assert run_experiment(cfg) == 0
+    assert _row_count(results_dir) == 2
+
+
+def test_force_reruns_all_cells(tmp_path):
+    cfg, results_dir = _resume_config(tmp_path)
+    assert run_experiment(cfg) == 0
+    assert _row_count(results_dir) == 2
+
+    # --force re-solves the full grid and appends a second set of rows.
+    assert run_experiment(cfg, force=True) == 0
+    assert _row_count(results_dir) == 4

@@ -50,7 +50,32 @@ python -m venv .venv
 .venv\Scripts\python.exe -m vrpbench.cli --config experiments/sdvrp_smoke.yaml --threads 4
 ```
 
-Results are appended incrementally to `results/results.csv` (one row per run).
+Results are appended incrementally to `results/results.csv` (one row per run). Re-running
+the same config **resumes** by default: cells already in the CSV are skipped (see below).
+
+### Resume (skip already-done cells)
+
+Every run reads `results/results.csv` at startup and skips any cell already recorded there,
+so an interrupted batch can simply be re-launched to finish the remaining work — no
+recomputation of finished cells.
+
+```powershell
+# First launch solves the whole grid; if interrupted, just run the same command again —
+# it picks up only the cells that have no row yet.
+.venv\Scripts\python.exe -m vrpbench.cli --config experiments/benchmark.yaml --threads 8
+
+# Force a full re-run, ignoring existing rows (--no-resume is an alias):
+.venv\Scripts\python.exe -m vrpbench.cli --config experiments/benchmark.yaml --force
+```
+
+- A cell is identified by `(instance_name, variant, solver, seed)` — `run_id`,
+  `solver_version`, and `time_budget_s` are **not** part of the key.
+- A cell counts as done if it has **any** row (`ok`, `infeasible`, **or `error`**). To retry
+  an `error` cell, re-run with `--force` or delete its row from the CSV.
+- The startup line reports what was skipped, e.g.
+  `Resume: 1430/1600 cells already in results/results.csv; running 170 remaining.`
+- `--force` (alias `--no-resume`) **appends** a fresh set of rows; it does not truncate the
+  CSV. To start completely clean, point `results_dir` at a new folder or delete the CSV.
 
 ### Parallel execution (`--threads N`)
 
@@ -120,7 +145,7 @@ datasets:
 | `vrpbench/core` | `Instance`, `Solution`, independent `evaluate` (objective recompute, feasibility, gap) |
 | `vrpbench/datasets` | `loader` (CVRPLIB `.vrp` + Solomon/GH `.txt` via `vrplib`, Cordeau MDVRP/PVRP/SDVRP `.txt`, Salhi–Nagy `.vrpmpd`), curated `bks` table |
 | `vrpbench/solvers` | `Solver` protocol + `pyvrp` / `ortools` / `vroom` / `vrpsolvereasy` adapters + `pvrp_solver` ALNS wrapper + `sdvrp_solver` Tabu Search + `SOLVERS` registry |
-| `vrpbench/runner` | YAML `config` + execution loop |
+| `vrpbench/runner` | YAML `config` + execution loop (parallel `--threads`, resume / `--force`) |
 | `vrpbench/results` | incremental CSV store (+ optional per-run JSON) |
 
 ## Solvers
