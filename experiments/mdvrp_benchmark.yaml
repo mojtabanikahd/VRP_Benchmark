@@ -1,0 +1,45 @@
+# MDVRP benchmark: three multi-depot solvers on all Cordeau p/pr instances.
+# VRPSolverEasy is excluded from MDVRP (no multi-depot support).
+run_id: mdvrp_benchmark
+seeds: [0, 1, 2, 3, 4, 5]
+time_budget:
+  base_s: 10
+  per_node_ms: 0
+results_dir: results
+solvers: [pyvrp, ortools, vroom]
+datasets:
+  - variant: MDVRP
+    instances:
+      - data/instances/MDVRP/old/p01.txt
+      - data/instances/MDVRP/old/p02.txt
+      - data/instances/MDVRP/old/p03.txt
+      - data/instances/MDVRP/old/p04.txt
+      - data/instances/MDVRP/old/p05.txt
+      - data/instances/MDVRP/old/p06.txt
+      - data/instances/MDVRP/old/p07.txt
+      - data/instances/MDVRP/old/p08.txt
+      - data/instances/MDVRP/old/p09.txt
+      - data/instances/MDVRP/old/p10.txt
+      - data/instances/MDVRP/old/p11.txt
+      - data/instances/MDVRP/old/p12.txt
+      - data/instances/MDVRP/old/p13.txt
+      - data/instances/MDVRP/old/p14.txt
+      - data/instances/MDVRP/old/p15.txt
+      - data/instances/MDVRP/old/p16.txt
+      - data/instances/MDVRP/old/p17.txt
+      - data/instances/MDVRP/old/p18.txt
+      - data/instances/MDVRP/old/p19.txt
+      - data/instances/MDVRP/old/p20.txt
+      - data/instances/MDVRP/old/p21.txt
+      - data/instances/MDVRP/old/p22.txt
+      - data/instances/MDVRP/old/p23.txt
+      - data/instances/MDVRP/new/pr01.txt
+      - data/instances/MDVRP/new/pr02.txt
+      - data/instances/MDVRP/new/pr03.txt
+      - data/instances/MDVRP/new/pr04.txt
+      - data/instances/MDVRP/new/pr05.txt
+      - data/instances/MDVRP/new/pr06.txt
+      - data/instances/MDVRP/new/pr07.txt
+      - data/instances/MDVRP/new/pr08.txt
+      - data/instances/MDVRP/new/pr09.txt
+      - data/instances/MDVRP/new/pr10.txt
