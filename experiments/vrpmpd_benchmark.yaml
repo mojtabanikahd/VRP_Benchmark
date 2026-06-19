@@ -1,0 +1,83 @@
+# VRPMPD benchmark: three supporting solvers (pyvrp, ortools, vroom) on all 70 S instances.
+# VRPSolverEasy is excluded (no mixed pickup/delivery model).
+# Two-stage objective: minimize vehicles first (via fixed cost), then distance.
+run_id: vrpmpd_benchmark
+seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+time_budget:
+  base_s: 10
+  per_node_ms: 0
+results_dir: results
+solvers: [pyvrp, ortools, vroom]
+datasets:
+  - variant: VRPMPD
+    instances:
+      - data/instances/S/CMT01H.vrpmpd
+      - data/instances/S/CMT01Q.vrpmpd
+      - data/instances/S/CMT01T.vrpmpd
+      - data/instances/S/CMT02H.vrpmpd
+      - data/instances/S/CMT02Q.vrpmpd
+      - data/instances/S/CMT02T.vrpmpd
+      - data/instances/S/CMT03H.vrpmpd
+      - data/instances/S/CMT03Q.vrpmpd
+      - data/instances/S/CMT03T.vrpmpd
+      - data/instances/S/CMT04H.vrpmpd
+      - data/instances/S/CMT04Q.vrpmpd
+      - data/instances/S/CMT04T.vrpmpd
+      - data/instances/S/CMT05H.vrpmpd
+      - data/instances/S/CMT05Q.vrpmpd
+      - data/instances/S/CMT05T.vrpmpd
+      - data/instances/S/CMT06H.vrpmpd
+      - data/instances/S/CMT06Q.vrpmpd
+      - data/instances/S/CMT06T.vrpmpd
+      - data/instances/S/CMT07H.vrpmpd
+      - data/instances/S/CMT07Q.vrpmpd
+      - data/instances/S/CMT07T.vrpmpd
+      - data/instances/S/CMT08H.vrpmpd
+      - data/instances/S/CMT08Q.vrpmpd
+      - data/instances/S/CMT08T.vrpmpd
+      - data/instances/S/CMT09H.vrpmpd
+      - data/instances/S/CMT09Q.vrpmpd
+      - data/instances/S/CMT09T.vrpmpd
+      - data/instances/S/CMT10H.vrpmpd
+      - data/instances/S/CMT10Q.vrpmpd
+      - data/instances/S/CMT10T.vrpmpd
+      - data/instances/S/CMT10X.vrpmpd
+      - data/instances/S/CMT10Y.vrpmpd
+      - data/instances/S/CMT11H.vrpmpd
+      - data/instances/S/CMT11Q.vrpmpd
+      - data/instances/S/CMT11T.vrpmpd
+      - data/instances/S/CMT11X.vrpmpd
+      - data/instances/S/CMT11Y.vrpmpd
+      - data/instances/S/CMT12H.vrpmpd
+      - data/instances/S/CMT12Q.vrpmpd
+      - data/instances/S/CMT12T.vrpmpd
+      - data/instances/S/CMT12X.vrpmpd
+      - data/instances/S/CMT12Y.vrpmpd
+      - data/instances/S/CMT13H.vrpmpd
+      - data/instances/S/CMT13Q.vrpmpd
+      - data/instances/S/CMT13T.vrpmpd
+      - data/instances/S/CMT13X.vrpmpd
+      - data/instances/S/CMT13Y.vrpmpd
+      - data/instances/S/CMT14H.vrpmpd
+      - data/instances/S/CMT14Q.vrpmpd
+      - data/instances/S/CMT14T.vrpmpd
+      - data/instances/S/CMT14X.vrpmpd
+      - data/instances/S/CMT14Y.vrpmpd
+      - data/instances/S/CMT1X.vrpmpd
+      - data/instances/S/CMT1Y.vrpmpd
+      - data/instances/S/CMT2X.vrpmpd
+      - data/instances/S/CMT2Y.vrpmpd
+      - data/instances/S/CMT3X.vrpmpd
+      - data/instances/S/CMT3Y.vrpmpd
+      - data/instances/S/CMT4X.vrpmpd
+      - data/instances/S/CMT4Y.vrpmpd
+      - data/instances/S/CMT5X.vrpmpd
+      - data/instances/S/CMT5Y.vrpmpd
+      - data/instances/S/CMT6X.vrpmpd
+      - data/instances/S/CMT6Y.vrpmpd
+      - data/instances/S/CMT7X.vrpmpd
+      - data/instances/S/CMT7Y.vrpmpd
+      - data/instances/S/CMT8X.vrpmpd
+      - data/instances/S/CMT8Y.vrpmpd
+      - data/instances/S/CMT9X.vrpmpd
+      - data/instances/S/CMT9Y.vrpmpd

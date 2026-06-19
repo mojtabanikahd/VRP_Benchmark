@@ -1,7 +1,7 @@
 # MDVRP benchmark: three multi-depot solvers on all Cordeau p/pr instances.
 # VRPSolverEasy is excluded from MDVRP (no multi-depot support).
 run_id: mdvrp_benchmark
-seeds: [0, 1, 2, 3, 4, 5]
+seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 time_budget:
   base_s: 10
   per_node_ms: 0
