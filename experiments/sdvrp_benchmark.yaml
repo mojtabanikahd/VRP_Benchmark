@@ -1,0 +1,53 @@
+# SDVRP full benchmark: all 35 Cordeau site-dependent instances (old p01-p23,
+# new pr01-pr12) across the standalone Tabu Search and the three base-seeded
+# wrappers. Flat per-instance budget (no per-node scaling).
+#
+# NOTE ON COST: the Tabu Search is wall-clock bounded, so every cell runs for the
+# full budget unless it converges early (no improvement for 100 iterations). The
+# largest old instances (p13-class) and the new pr06/pr12 are the heavy ones; raise
+# base_s for a deeper search.
+run_id: sdvrp_benchmark
+seeds: [0]
+time_budget:
+  base_s: 60
+  per_node_ms: 0
+results_dir: results
+solvers: [sdvrp_tabu, sdvrp_pyvrp, sdvrp_ortools, sdvrp_vroom]
+datasets:
+  - variant: SDVRP
+    instances:
+      - data/instances/SDVRP/old/p01.txt
+      - data/instances/SDVRP/old/p02.txt
+      - data/instances/SDVRP/old/p03.txt
+      - data/instances/SDVRP/old/p04.txt
+      - data/instances/SDVRP/old/p05.txt
+      - data/instances/SDVRP/old/p06.txt
+      - data/instances/SDVRP/old/p07.txt
+      - data/instances/SDVRP/old/p08.txt
+      - data/instances/SDVRP/old/p09.txt
+      - data/instances/SDVRP/old/p10.txt
+      - data/instances/SDVRP/old/p11.txt
+      - data/instances/SDVRP/old/p12.txt
+      - data/instances/SDVRP/old/p13.txt
+      - data/instances/SDVRP/old/p14.txt
+      - data/instances/SDVRP/old/p15.txt
+      - data/instances/SDVRP/old/p16.txt
+      - data/instances/SDVRP/old/p17.txt
+      - data/instances/SDVRP/old/p18.txt
+      - data/instances/SDVRP/old/p19.txt
+      - data/instances/SDVRP/old/p20.txt
+      - data/instances/SDVRP/old/p21.txt
+      - data/instances/SDVRP/old/p22.txt
+      - data/instances/SDVRP/old/p23.txt
+      - data/instances/SDVRP/new/pr01.txt
+      - data/instances/SDVRP/new/pr02.txt
+      - data/instances/SDVRP/new/pr03.txt
+      - data/instances/SDVRP/new/pr04.txt
+      - data/instances/SDVRP/new/pr05.txt
+      - data/instances/SDVRP/new/pr06.txt
+      - data/instances/SDVRP/new/pr07.txt
+      - data/instances/SDVRP/new/pr08.txt
+      - data/instances/SDVRP/new/pr09.txt
+      - data/instances/SDVRP/new/pr10.txt
+      - data/instances/SDVRP/new/pr11.txt
+      - data/instances/SDVRP/new/pr12.txt

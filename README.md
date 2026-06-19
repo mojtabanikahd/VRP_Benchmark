@@ -1,15 +1,18 @@
 # vrpbench
 
 A fast, reproducible benchmarking harness for **CVRP**, **VRPTW**, **MDVRP**
-(multi-depot), **VRPMPD** (mixed pickup & delivery), and **PVRP** (periodic VRP) that
-compares complete solvers on *final solution quality + runtime* only.
+(multi-depot), **VRPMPD** (mixed pickup & delivery), **PVRP** (periodic VRP), and
+**SDVRP** (site-dependent / split-delivery VRP) that compares complete solvers on *final
+solution quality + runtime* only.
 
 Bundled solvers: **PyVRP** (CVRP + VRPTW + MDVRP + VRPMPD), **OR-Tools** (CVRP + VRPTW +
 MDVRP + VRPMPD), **VROOM** (CVRP + VRPTW + MDVRP + VRPMPD), **VRPSolverEasy** (CVRP +
-VRPTW — exact BCP via BaPCod; MDVRP, VRPMPD, and PVRP not supported), and **PVRPSolver**
+VRPTW — exact BCP via BaPCod; MDVRP, VRPMPD, PVRP, and SDVRP not supported), **PVRPSolver**
 wrapping any of the three heuristic solvers (`pvrp_pyvrp`, `pvrp_ortools`, `pvrp_vroom`)
-for PVRP via ALNS over day-combination assignments. A future custom solver plugs in as one
-adapter file + one registry entry.
+for PVRP via ALNS over day-combination assignments, and **SDVRPSolver**, a self-contained
+Tabu Search (`sdvrp_tabu`, plus `sdvrp_pyvrp` / `sdvrp_ortools` / `sdvrp_vroom` which seed
+the initial solution from a base solver). A future custom solver plugs in as one adapter
+file + one registry entry.
 
 ## Install
 
@@ -36,6 +39,9 @@ python -m venv .venv
 
 # PVRP smoke — three PVRP wrappers on one old (no duration limit) + one new (duration limit) instance
 .venv\Scripts\python.exe -m vrpbench.cli --config experiments/pvrp_smoke.yaml
+
+# SDVRP smoke — Tabu Search + one base-seeded wrapper on one old + one new site-dependent instance
+.venv\Scripts\python.exe -m vrpbench.cli --config experiments/sdvrp_smoke.yaml
 
 # Full benchmark — all four solvers on the standard CVRP X-set + Solomon VRPTW set
 .venv\Scripts\python.exe -m vrpbench.cli --config experiments/benchmark.yaml
@@ -69,14 +75,19 @@ datasets:
   - variant: PVRP             # periodic VRP; must be declared explicitly (see note)
     instances:
       - data/instances/PVRP/old/p01.txt
+  - variant: SDVRP            # site-dependent / split-delivery VRP; declared explicitly
+    instances:
+      - data/instances/SDVRP/old/p01.txt
 ```
 
-> **MDVRP and PVRP files share the `.txt` extension with Solomon VRPTW**, so their variant
-> cannot be inferred from the filename — declare `variant: MDVRP` or `variant: PVRP`
-> explicitly and the loader selects the correct Cordeau parser. `vrpsolvereasy` cannot be
-> listed under an MDVRP, VRPMPD, or PVRP group (config validation rejects it with a clear
-> error). PVRP solvers must use the `pvrp_*` names (`pvrp_pyvrp`, `pvrp_ortools`,
-> `pvrp_vroom`); the plain `pyvrp`/`ortools`/`vroom` names do not support PVRP.
+> **MDVRP, PVRP, and SDVRP files share the `.txt` extension with Solomon VRPTW**, so their
+> variant cannot be inferred from the filename — declare `variant: MDVRP`, `variant: PVRP`,
+> or `variant: SDVRP` explicitly and the loader selects the correct Cordeau parser.
+> `vrpsolvereasy` cannot be listed under an MDVRP, VRPMPD, PVRP, or SDVRP group (config
+> validation rejects it with a clear error). PVRP solvers must use the `pvrp_*` names
+> (`pvrp_pyvrp`, `pvrp_ortools`, `pvrp_vroom`) and SDVRP solvers the `sdvrp_*` names
+> (`sdvrp_tabu`, `sdvrp_pyvrp`, `sdvrp_ortools`, `sdvrp_vroom`); the plain
+> `pyvrp`/`ortools`/`vroom` names do not support PVRP or SDVRP.
 >
 > **VRPMPD files use the unique `.vrpmpd` extension** — the variant is inferred automatically
 > and no explicit `variant:` declaration is needed (though it is accepted and validated).
@@ -86,22 +97,26 @@ datasets:
 | Module | Responsibility |
 |---|---|
 | `vrpbench/core` | `Instance`, `Solution`, independent `evaluate` (objective recompute, feasibility, gap) |
-| `vrpbench/datasets` | `loader` (CVRPLIB `.vrp` + Solomon/GH `.txt` via `vrplib`, Cordeau MDVRP/PVRP `.txt`, Salhi–Nagy `.vrpmpd`), curated `bks` table |
-| `vrpbench/solvers` | `Solver` protocol + `pyvrp` / `ortools` / `vroom` / `vrpsolvereasy` adapters + `pvrp_solver` ALNS wrapper + `SOLVERS` registry |
+| `vrpbench/datasets` | `loader` (CVRPLIB `.vrp` + Solomon/GH `.txt` via `vrplib`, Cordeau MDVRP/PVRP/SDVRP `.txt`, Salhi–Nagy `.vrpmpd`), curated `bks` table |
+| `vrpbench/solvers` | `Solver` protocol + `pyvrp` / `ortools` / `vroom` / `vrpsolvereasy` adapters + `pvrp_solver` ALNS wrapper + `sdvrp_solver` Tabu Search + `SOLVERS` registry |
 | `vrpbench/runner` | YAML `config` + execution loop |
 | `vrpbench/results` | incremental CSV store (+ optional per-run JSON) |
 
 ## Solvers
 
-| Name | Type | CVRP | VRPTW | MDVRP | VRPMPD | PVRP | Notes |
-|---|---|---|---|---|---|---|---|
-| `pyvrp` | Heuristic (LNS) | ✓ | ✓ | ✓ | ✓ | ✗ | |
-| `ortools` | Heuristic (CP-SAT/LNS) | ✓ | ✓ | ✓ | ✓ | ✗ | |
-| `vroom` | Heuristic (LNS) | ✓ | ✓ | ✓ | ✓ | ✗ | Windows: numpy `uintc` workaround applied |
-| `vrpsolvereasy` | Exact (BCP / BaPCod) | ✓ | ✓ | ✗ | ✗ | ✗ | Requires BaPCod binaries; ≤ 1022 nodes; needs long time budgets (see below) |
-| `pvrp_pyvrp` | ALNS wrapper (PyVRP inner) | ✗ | ✗ | ✗ | ✗ | ✓ | |
-| `pvrp_ortools` | ALNS wrapper (OR-Tools inner) | ✗ | ✗ | ✗ | ✗ | ✓ | |
-| `pvrp_vroom` | ALNS wrapper (VROOM inner) | ✗ | ✗ | ✗ | ✗ | ✓ | |
+| Name | Type | CVRP | VRPTW | MDVRP | VRPMPD | PVRP | SDVRP | Notes |
+|---|---|---|---|---|---|---|---|---|
+| `pyvrp` | Heuristic (LNS) | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | |
+| `ortools` | Heuristic (CP-SAT/LNS) | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | |
+| `vroom` | Heuristic (LNS) | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | Windows: numpy `uintc` workaround applied |
+| `vrpsolvereasy` | Exact (BCP / BaPCod) | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | Requires BaPCod binaries; ≤ 1022 nodes; needs long time budgets (see below) |
+| `pvrp_pyvrp` | ALNS wrapper (PyVRP inner) | ✗ | ✗ | ✗ | ✗ | ✓ | ✗ | |
+| `pvrp_ortools` | ALNS wrapper (OR-Tools inner) | ✗ | ✗ | ✗ | ✗ | ✓ | ✗ | |
+| `pvrp_vroom` | ALNS wrapper (VROOM inner) | ✗ | ✗ | ✗ | ✗ | ✓ | ✗ | |
+| `sdvrp_tabu` | Tabu Search (greedy init) | ✗ | ✗ | ✗ | ✗ | ✗ | ✓ | |
+| `sdvrp_pyvrp` | Tabu Search (PyVRP-seeded init) | ✗ | ✗ | ✗ | ✗ | ✗ | ✓ | Base solver seeds the initial solution only |
+| `sdvrp_ortools` | Tabu Search (OR-Tools-seeded init) | ✗ | ✗ | ✗ | ✗ | ✗ | ✓ | Base solver seeds the initial solution only |
+| `sdvrp_vroom` | Tabu Search (VROOM-seeded init) | ✗ | ✗ | ✗ | ✗ | ✗ | ✓ | Base solver seeds the initial solution only |
 
 All three heuristic solvers handle multiple depots **natively** (PyVRP per-depot vehicle
 types, OR-Tools per-vehicle `starts`/`ends`, VROOM per-vehicle `start`/`end`). MDVRP uses
@@ -121,6 +136,24 @@ independently as a CVRP (old dataset, no duration limit) or VRPTW (new dataset, 
 per-route duration limit) sub-instance with a hard fleet cap of `m` vehicles/day. The
 reported objective is the total travel distance summed across all `t` days; day-route
 solutions are re-evaluated against the authoritative distance matrix so `obj_mismatch ≈ 0`.
+
+For **SDVRP**, none of the base solvers support site-dependency or split delivery, so it is
+solved by a self-contained `SDVRPSolver` **Tabu Search**. The fleet is modelled as exactly
+`m` route slots per vehicle type (`S = m·t` slots, each with a fixed type), so the per-type
+fleet cap is **structural** and never violated. A best-fit construction places customers
+into slots — splitting a customer's demand across slots to respect capacity — and the Tabu
+Search improves it with Relocate, Swap, and Split-Adjust moves (best-position insertion;
+tabu tenure `k = 20` with aspiration). The cost is distance plus a large finite penalty per
+unit of infeasibility (capacity / duration overflow + site-incompatible visits), so any
+feasible solution strictly beats any infeasible one while the search still has a gradient to
+follow; demand coverage is preserved as an invariant. The standalone `sdvrp_tabu` builds its
+own greedy initial solution, while `sdvrp_pyvrp` / `sdvrp_ortools` / `sdvrp_vroom` seed the
+construction order from a relaxed homogeneous CVRP solved by the base solver (initial
+solution only). The wall-clock budget is the primary stop; the no-improvement early-exit
+applies only once a feasible solution exists. The reported objective is recomputed as pure
+travel distance over the final routes, so `obj_mismatch ≈ 0`. Split delivery is genuine: a
+customer may be served by several routes (tracked in `route_deliveries`), which is often
+required to fill the tight heterogeneous fleet.
 
 ### VRPSolverEasy time budget note
 
@@ -170,12 +203,24 @@ Place instance files under `data/instances/`:
   p09) are the tightest. Euclidean distances are nearest-integer rounded. The objective is
   total travel distance summed across all `t` days (single-stage, no vehicle-count term).
   No BKS are bundled — `gap_pct` is left blank for PVRP runs.
+- **SDVRP** — Cordeau type-3 benchmark (`data/instances/SDVRP/`, `.txt`,
+  [source](http://neumann.hec.ca/chairedistributique/data/)): 35 instances split into two
+  sets. Old set `old/p01–p23` (27–324 customers, `t ∈ {2,3}` vehicle types, no
+  route-duration limit, integer service times of 0). New set `new/pr01–pr12` (48–1008
+  customers, `t ∈ {4,6}` types, per-route duration limit 500, non-zero service times). Each
+  vehicle **type** has its own capacity (60–250) and `m` vehicles are available per type
+  (1–21). Each customer carries **combination codes** — MSB-first bitmasks over the `t`
+  types — naming the vehicle types allowed to serve it (site-dependency). Euclidean
+  distances are nearest-integer rounded. The objective is total travel distance; service
+  time counts only toward route-duration feasibility (new set), not the objective. The fleet
+  is tight (total demand reaches ~92% of total fleet capacity), so split delivery is often
+  required. No BKS are bundled — `gap_pct` is left blank for SDVRP runs.
 
 `data/bks.csv` (`instance_name, variant, bks_value, rounding, source`) holds curated
 best-known values for gap computation. The `rounding` column documents the distance
 convention each BKS was computed under (`int` for CVRP, `float`/1-decimal for VRPTW),
 kept consistent with the loader. Missing BKS → `gap_pct` is left blank, not an error
-(MDVRP, VRPMPD, and PVRP BKS are not bundled).
+(MDVRP, VRPMPD, PVRP, and SDVRP BKS are not bundled).
 
 ## Correctness model
 
@@ -193,6 +238,13 @@ distance matrix and re-checked for feasibility:
   day; per-route load ≤ capacity; (new set) per-route travel + service time ≤
   `max_route_duration`. The objective is recomputed as the sum of all route distances
   across all days from the authoritative matrix, so `obj_mismatch ≈ 0` by construction.
+- **SDVRP** — each route's vehicle type (via `route_vehicle_types`) and per-customer
+  delivered quantities (via `route_deliveries`) are checked: at most `m` routes per type;
+  every customer on a route allows that route's type; per-route delivered load ≤ that type's
+  capacity; (new set) per-route travel + service time ≤ that type's duration limit; and each
+  customer's delivered quantities summed across all routes equal exactly its demand (so
+  split delivery is verified end to end). The objective is recomputed as the sum of all route
+  distances from the authoritative matrix, so `obj_mismatch ≈ 0` by construction.
 
 The `obj_mismatch` column flags any disagreement between a solver's reported objective and
 the independent recompute (≈0 for integer-distance variants; tiny for VRPTW). For VRPMPD

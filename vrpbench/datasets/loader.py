@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 import vrplib
 
-from vrpbench.core.instance import CVRP, MDVRP, PVRP, VRPTW, VRPMPD, Instance
+from vrpbench.core.instance import CVRP, MDVRP, PVRP, SDVRP, VRPTW, VRPMPD, Instance
 
 # Map file extension -> (vrplib format, our variant).
 _EXT_FORMAT = {
@@ -46,16 +46,18 @@ def load(path: str | os.PathLike, variant: str | None = None) -> Instance:
     ``variant`` may be passed to override extension-based detection; it must then
     match the detected variant (guards against mislabelled config entries).
 
-    MDVRP and PVRP files share the ``.txt`` extension with Solomon VRPTW, so they
-    cannot be inferred from the extension — they must be requested explicitly via
-    ``variant=MDVRP`` / ``variant=PVRP``, which dispatch to the Cordeau parsers
-    below. VRPMPD files use the unique ``.vrpmpd`` extension and are dispatched
-    automatically (no explicit ``variant`` needed).
+    MDVRP, PVRP and SDVRP files share the ``.txt`` extension with Solomon VRPTW, so
+    they cannot be inferred from the extension — they must be requested explicitly via
+    ``variant=MDVRP`` / ``variant=PVRP`` / ``variant=SDVRP``, which dispatch to the
+    Cordeau parsers below. VRPMPD files use the unique ``.vrpmpd`` extension and are
+    dispatched automatically (no explicit ``variant`` needed).
     """
     if variant == MDVRP:
         return _load_cordeau_mdvrp(path)
     if variant == PVRP:
         return _load_pvrp(path)
+    if variant == SDVRP:
+        return _load_sdvrp(path)
     if Path(path).suffix.lower() == ".vrpmpd":
         if variant is not None and variant != VRPMPD:
             raise ValueError(
@@ -269,6 +271,102 @@ def _load_pvrp(path: str | os.PathLike) -> Instance:
         combinations=combinations,
         max_vehicles_per_day=max_vehicles_per_day,
         max_route_duration=float(max_route_duration),
+        source_path=str(path),
+    )
+
+
+def _types_of(code: int, t: int) -> list[int]:
+    """0-indexed vehicle types encoded by an SDVRP combination ``code`` (MSB-first).
+
+    Cordeau codes are read left-to-right: in a ``t``-bit string the leftmost bit is
+    the *first* type line. README example: ``code 10 = bitstring 01010`` selects the
+    2nd and 4th entries. So type ``j`` (0-indexed, line ``j+1``) is set iff bit
+    ``t - 1 - j`` is set. This is the **opposite** of PVRP's LSB-first day decoding,
+    and it matters here because each type has a different capacity.
+    """
+    return [j for j in range(t) if code & (1 << (t - 1 - j))]
+
+
+def _load_sdvrp(path: str | os.PathLike) -> Instance:
+    """Parse a Cordeau Site-Dependent / Split-Delivery VRP instance (type 3).
+
+    Layout (whitespace-separated; same family as the PVRP file but type=3):
+
+        type  m  n  t              # type (ignore), m vehicles PER TYPE, n customers,
+                                   # t vehicle types
+        D  Q                       # repeated t times: D = max route duration
+                                   # (0 = unlimited), Q = capacity (per vehicle type)
+        0  x y  svc dem  0 0       # depot is node id 0 FIRST (demand/freq 0)
+        i  x y  svc dem  f K c1..cK  # n customers, ids 1..n; K = number of combination
+                                   # codes, then the K codes (each an MSB-first bitmask
+                                   # over the t vehicle types)
+
+    Like the PVRP layout, the depot is the *first* data line (internal index 0) and
+    each customer line is variable-width (``7 + K`` tokens), so the file is read as a
+    flat token stream. Combination codes are decoded MSB-first (see ``_types_of``) and
+    unioned into a per-customer set of allowed vehicle types. Coordinates are read as
+    floats (covers integer ``old`` and float ``new`` sets) and the distance matrix is
+    integer-rounded Euclidean over all nodes — the same EUC_2D convention used for the
+    other variants, keeping the solvers byte-identical (scale 1) and the evaluator's
+    re-score consistent. ``capacity`` is set to the largest type capacity for interface
+    compatibility; SDVRP-specific code uses ``vehicle_capacities`` per type.
+    """
+    tokens = iter(Path(path).read_text(encoding="utf-8").split())
+
+    next(tokens)  # type — ignored
+    vehicles_per_type = int(next(tokens))  # m vehicles per type (hard cap)
+    num_customers = int(next(tokens))
+    num_types = int(next(tokens))
+
+    durations: list[float] = []
+    capacities: list[int] = []
+    for _ in range(num_types):
+        durations.append(float(next(tokens)))  # max route duration (0 = unlimited)
+        capacities.append(int(float(next(tokens))))  # vehicle capacity for this type
+
+    # Depot (id 0) + n customers (ids 1..n) = n + 1 data lines.
+    num_nodes = num_customers + 1
+    coords: list[tuple[float, float]] = []
+    demands: list[int] = []
+    services: list[float] = []
+    allowed: list[frozenset[int]] = []
+    for _ in range(num_nodes):
+        next(tokens)  # node id (file-local, sequential 0..n; ignored)
+        x = float(next(tokens))
+        y = float(next(tokens))
+        svc = float(next(tokens))
+        dem = int(float(next(tokens)))
+        next(tokens)  # freq — always 1 for SDVRP (each customer served once in total)
+        k = int(float(next(tokens)))
+        codes = [int(float(next(tokens))) for _ in range(k)]
+        types: set[int] = set()
+        for code in codes:
+            types.update(_types_of(code, num_types))
+        coords.append((x, y))
+        demands.append(dem)
+        services.append(svc)
+        allowed.append(frozenset(types))
+
+    coords_arr = np.asarray(coords, dtype=float)
+    diff = coords_arr[:, None, :] - coords_arr[None, :, :]
+    distance = np.rint(np.sqrt((diff**2).sum(axis=2)))
+
+    return Instance(
+        name=Path(path).stem,
+        variant=SDVRP,
+        num_nodes=num_nodes,
+        coords=coords_arr,
+        demands=np.asarray(demands, dtype=int),
+        capacity=int(max(capacities)),
+        distance=distance,
+        depot=0,
+        num_vehicles=None,
+        service_times=np.asarray(services, dtype=float),
+        num_vehicle_types=num_types,
+        vehicle_capacities=tuple(capacities),
+        vehicle_durations=tuple(float(d) for d in durations),
+        vehicles_per_type=vehicles_per_type,
+        allowed_types=allowed,
         source_path=str(path),
     )
 

@@ -19,7 +19,8 @@ VRPTW = "VRPTW"
 MDVRP = "MDVRP"
 VRPMPD = "VRPMPD"
 PVRP = "PVRP"
-VARIANTS = (CVRP, VRPTW, MDVRP, VRPMPD, PVRP)
+SDVRP = "SDVRP"
+VARIANTS = (CVRP, VRPTW, MDVRP, VRPMPD, PVRP, SDVRP)
 
 
 @dataclass(frozen=True)
@@ -60,6 +61,16 @@ class Instance:
     combinations: list[list[int]] | None = None
     max_vehicles_per_day: int | None = None  # m; hard cap on routes per day
     max_route_duration: float | None = None  # 0 = unlimited (old set); >0 = new set
+    # SDVRP-only (None for the other variants): a heterogeneous, site-dependent
+    # fleet of ``num_vehicle_types`` types. Each type has its own capacity and max
+    # route duration (0 = unlimited), with ``vehicles_per_type`` vehicles available
+    # of each type (a hard cap). ``allowed_types[c]`` is the set of 0-indexed vehicle
+    # types that may serve customer ``c`` (depot is the empty set; never routed).
+    num_vehicle_types: int | None = None  # t
+    vehicle_capacities: tuple[int, ...] | None = None  # capacity per type (len t)
+    vehicle_durations: tuple[float, ...] | None = None  # max duration per type (0 = none)
+    vehicles_per_type: int | None = None  # m; hard cap on routes per vehicle type
+    allowed_types: list[frozenset[int]] | None = None  # per node, 0-indexed type set
     # Generic optional hard fleet cap, honoured by the CVRP/VRPTW adapter build
     # paths when set. Only PVRP day sub-instances set it (so it never collides with
     # the ``num_vehicles`` hint used by existing variants).
@@ -119,6 +130,34 @@ class Instance:
                 if self.service_times is None or self.service_times.shape != (n,):
                     raise ValueError(
                         "PVRP with a route-duration limit requires service_times of "
+                        f"shape ({n},)"
+                    )
+        if self.variant == SDVRP:
+            t = self.num_vehicle_types
+            if t is None or t < 1:
+                raise ValueError("SDVRP instance requires num_vehicle_types >= 1")
+            if self.vehicle_capacities is None or len(self.vehicle_capacities) != t:
+                raise ValueError(f"SDVRP vehicle_capacities must have {t} entries")
+            if self.vehicle_durations is None or len(self.vehicle_durations) != t:
+                raise ValueError(f"SDVRP vehicle_durations must have {t} entries")
+            if self.vehicles_per_type is None or self.vehicles_per_type < 1:
+                raise ValueError("SDVRP instance requires vehicles_per_type >= 1")
+            if self.allowed_types is None or len(self.allowed_types) != n:
+                raise ValueError(
+                    f"SDVRP allowed_types must have {n} entries, got "
+                    f"{None if self.allowed_types is None else len(self.allowed_types)}"
+                )
+            for c in range(1, n):
+                if not self.allowed_types[c]:
+                    raise ValueError(f"SDVRP customer {c} has no allowed vehicle types")
+                if not self.allowed_types[c] <= set(range(t)):
+                    raise ValueError(
+                        f"SDVRP customer {c} allows out-of-range types {self.allowed_types[c]}"
+                    )
+            if any(d > 0 for d in self.vehicle_durations):
+                if self.service_times is None or self.service_times.shape != (n,):
+                    raise ValueError(
+                        "SDVRP with a route-duration limit requires service_times of "
                         f"shape ({n},)"
                     )
 

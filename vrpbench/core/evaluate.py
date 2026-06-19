@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from vrpbench.core.instance import MDVRP, PVRP, VRPMPD, VRPTW, Instance
+from vrpbench.core.instance import MDVRP, PVRP, SDVRP, VRPMPD, VRPTW, Instance
 from vrpbench.core.solution import Solution
 
 # Tolerance for comparing solver-reported vs recomputed objective.
@@ -65,6 +65,11 @@ def verify(instance: Instance, solution: Solution) -> Evaluation:
     # do not apply; ``_check_pvrp`` is authoritative for every PVRP constraint.
     if instance.variant == PVRP:
         violations.extend(_check_pvrp(instance, solution))
+    elif instance.variant == SDVRP:
+        # SDVRP allows a customer's demand to be split across several routes, so the
+        # generic single-visit/capacity checks do not apply; ``_check_sdvrp`` is
+        # authoritative for every SDVRP constraint.
+        violations.extend(_check_sdvrp(instance, solution))
     else:
         # --- visiting constraints ---------------------------------------------
         visited: list[int] = [c for r in solution.routes for c in r]
@@ -296,6 +301,117 @@ def _check_pvrp(instance: Instance, solution: Solution) -> list[str]:
             violations.append(
                 f"customer {c} visit pattern {sorted(visit_days[c])} is not an "
                 f"allowed combination (freq {int(instance.freq[c])})"
+            )
+    return violations
+
+
+def _check_sdvrp(instance: Instance, solution: Solution) -> list[str]:
+    """All SDVRP constraints, using ``route_vehicle_types`` and ``route_deliveries``.
+
+    Verifies: the parallel arrays align with ``routes``; no depot inside a route; no
+    invalid indices; each route names a valid vehicle type; at most ``m`` routes per
+    type (the per-type fleet cap); every customer on a route allows that route's type
+    (site-dependency); per-route delivered load ≤ that type's capacity; (when the type
+    has a duration limit) per-route travel+service ≤ the limit; and, per customer, the
+    delivered quantities summed across all routes equal exactly its demand (which
+    subsumes the visit requirement). The objective is total travel distance, summed by
+    ``total_distance`` over all routes — correct for SDVRP as-is.
+    """
+    violations: list[str] = []
+    routes = solution.routes
+    rtypes = solution.route_vehicle_types
+    rdeliv = solution.route_deliveries
+    t = int(instance.num_vehicle_types)
+    m = int(instance.vehicles_per_type)
+    caps = instance.vehicle_capacities
+    durs = instance.vehicle_durations
+    allowed = instance.allowed_types
+    svc = instance.service_times
+    assert caps is not None and durs is not None and allowed is not None
+
+    if len(rtypes) != len(routes):
+        violations.append(
+            f"route_vehicle_types length {len(rtypes)} does not match {len(routes)} routes"
+        )
+        return violations
+    if len(rdeliv) != len(routes):
+        violations.append(
+            f"route_deliveries length {len(rdeliv)} does not match {len(routes)} routes"
+        )
+        return violations
+
+    expected = set(instance.customers)
+
+    # Invalid indices / depot-inside-route.
+    seen = [c for r in routes for c in r]
+    bad = sorted({c for c in seen if not (0 <= c < instance.num_nodes)})
+    if bad:
+        violations.append(f"invalid node indices in routes: {bad}")
+    if instance.depot in seen:
+        violations.append("depot appears inside a route")
+
+    # Vehicle cap per type.
+    routes_per_type = [0] * t
+    for vt in rtypes:
+        if 0 <= vt < t:
+            routes_per_type[vt] += 1
+        else:
+            violations.append(f"route assigned to invalid vehicle type {vt}")
+    for vt in range(t):
+        if routes_per_type[vt] > m:
+            violations.append(
+                f"vehicle type {vt}: {routes_per_type[vt]} routes exceed "
+                f"max vehicles/type {m}"
+            )
+
+    # Per-route: site-dependency, delivered load vs capacity, duration.
+    delivered: dict[int, int] = {c: 0 for c in expected}
+    for i, (route, vt, deliv) in enumerate(zip(routes, rtypes, rdeliv)):
+        if not route:
+            continue
+        valid_type = 0 <= vt < t
+        # Delivered quantities must be keyed exactly by this route's customers.
+        if set(deliv) != {c for c in route if 0 <= c < instance.num_nodes}:
+            violations.append(
+                f"route {i}: route_deliveries keys {sorted(deliv)} do not match "
+                f"route customers {sorted(route)}"
+            )
+        load = 0
+        for c in route:
+            if not (0 <= c < instance.num_nodes):
+                continue
+            qty = int(deliv.get(c, 0))
+            if qty <= 0:
+                violations.append(f"route {i}: non-positive delivery {qty} to customer {c}")
+            load += qty
+            if c in delivered:
+                delivered[c] += qty
+            if valid_type and c in expected and vt not in allowed[c]:
+                violations.append(
+                    f"route {i}: customer {c} cannot be served by vehicle type {vt} "
+                    f"(allowed {sorted(allowed[c])})"
+                )
+        if valid_type and load > caps[vt]:
+            violations.append(
+                f"route {i}: load {load} exceeds vehicle type {vt} capacity {caps[vt]}"
+            )
+        if valid_type and durs[vt] > 0:
+            assert svc is not None
+            travel = route_distance(instance, route, instance.depot)
+            service = float(sum(svc[c] for c in route if 0 <= c < instance.num_nodes))
+            if travel + service > durs[vt] + OBJ_EPS:
+                violations.append(
+                    f"route {i}: duration {travel + service:.3f} exceeds vehicle type "
+                    f"{vt} max route duration {durs[vt]:.3f}"
+                )
+
+    # Per-customer demand coverage: delivered total must equal demand exactly.
+    for c in sorted(expected):
+        want = int(instance.demands[c])
+        got = delivered[c]
+        if got != want:
+            violations.append(
+                f"customer {c} receives {got} of required demand {want}"
             )
     return violations
 
