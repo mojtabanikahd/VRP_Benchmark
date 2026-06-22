@@ -1,9 +1,1 @@
-numpy>=1.26,<3
-vrplib>=1.4,<2
-pyvrp>=0.9,<0.12
-ortools>=9.10,<10
-pyyaml>=6.0,<7
-pytest>=8.0,<9
-pandas>=2.0,<4
-pyvroom>=1.15,<2
-VRPSolverEasy>=0.1.4,<0.2
+-e .[dev]

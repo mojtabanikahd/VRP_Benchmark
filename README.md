@@ -21,6 +21,12 @@ python -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
+`requirements.txt` contains a single `-e .[dev]` line, so pip installs the
+`vrpbench` package in editable mode together with all runtime and development
+dependencies declared in `pyproject.toml`. `pyproject.toml` is the single
+source of truth for dependencies; `requirements.txt` is just the install
+entry-point.
+
 > **VRPSolverEasy (exact solver):** the pip package does not bundle the BaPCod shared
 > library. See [BAPCOD_SETUP.md](BAPCOD_SETUP.md) for the one-time binary copy step
 > required before `vrpsolvereasy` cells will run.
