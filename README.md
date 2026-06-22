@@ -61,6 +61,7 @@ the same `results/results.csv`, the configs must run sequentially; `--threads` c
 intra-experiment parallelism (cells within one config solved concurrently).
 
 ```bash
+# One-time: make the script executable (required after cloning on Linux/macOS)
 chmod +x run_all_benchmarks.sh
 
 # Use all available cores (detected via nproc)
