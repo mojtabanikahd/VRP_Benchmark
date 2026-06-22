@@ -52,9 +52,9 @@ def run_experiment(cfg: ExperimentConfig, threads: int = 1, force: bool = False)
 
     total_grid = len(cells)
     if not force:
-        done = store.load_done_keys()
+        done = store.load_done_keys(cfg.run_id)
         # Stem heuristic: instance_name == Path(path).stem (verified for all loaders/sets).
-        cells = [c for c in cells if (Path(c[1]).stem, c[0], c[2], c[3]) not in done]
+        cells = [c for c in cells if (cfg.run_id, Path(c[1]).stem, c[0], c[2], c[3]) not in done]
         skipped = total_grid - len(cells)
         print(
             f"Resume: {skipped}/{total_grid} cells already in {store.csv_path}; "

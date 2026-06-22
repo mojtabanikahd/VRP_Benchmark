@@ -72,21 +72,26 @@ class ResultStore:
         self.store_detail = store_detail
         self._header_written = self.csv_path.exists()
 
-    def load_done_keys(self) -> frozenset[tuple[str, str, str, int]]:
-        """Return (instance_name, variant, solver, seed) for every row in the CSV.
+    def load_done_keys(self, run_id: str) -> frozenset[tuple[str, str, str, str, int]]:
+        """Return (run_id, instance_name, variant, solver, seed) for every row in the CSV.
 
         Status-agnostic: ok / infeasible / error all count as done. A malformed row
         (missing column or non-int seed) is skipped, so that cell will be re-run.
+        Scoped to run_id so results from a different experiment never block this one.
         """
         if not self.csv_path.exists():
             return frozenset()
-        done: set[tuple[str, str, str, int]] = set()
+        done: set[tuple[str, str, str, str, int]] = set()
         with self.csv_path.open(encoding="utf-8", newline="") as fh:
             for row in csv.DictReader(fh):
                 try:
-                    done.add(
-                        (row["instance_name"], row["variant"], row["solver"], int(row["seed"]))
-                    )
+                    done.add((
+                        row["run_id"],
+                        row["instance_name"],
+                        row["variant"],
+                        row["solver"],
+                        int(row["seed"]),
+                    ))
                 except (KeyError, ValueError):
                     pass  # malformed row -> treat cell as not-done (safe: re-run it)
         return frozenset(done)
