@@ -102,8 +102,9 @@ recomputation of finished cells.
 .venv\Scripts\python.exe -m vrpbench.cli --config experiments/benchmark.yaml --force
 ```
 
-- A cell is identified by `(instance_name, variant, solver, seed)` — `run_id`,
-  `solver_version`, and `time_budget_s` are **not** part of the key.
+- A cell is identified by `(run_id, instance_name, variant, solver, seed)` — `solver_version`
+  and `time_budget_s` are **not** part of the key. Results from a different `run_id` never
+  block cells in the current experiment.
 - A cell counts as done if it has **any** row (`ok`, `infeasible`, **or `error`**). To retry
   an `error` cell, re-run with `--force` or delete its row from the CSV.
 - The startup line reports what was skipped, e.g.
