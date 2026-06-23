@@ -105,8 +105,7 @@ VARIANT_DESCRIPTIONS = {
     "VRPTW": [
         "Solomon benchmark; 56 instances, 100 customers each.",
         "Classes: C = clustered, R = random, RC = mixed; group 1 = narrow windows, group 2 = wide.",
-        "Solvers: PyVRP, OR-Tools, VROOM, VRPSolverEasy.",
-        "All runs produced errors in this experiment - success column shows 0/10.",
+        "Solvers: PyVRP, OR-Tools, VROOM, VRPSolverEasy. No BKS gap reported.",
     ],
     "MDVRP": [
         "Cordeau benchmark; 33 instances. Old set p01-p23, new set pr01-pr10.",
@@ -127,7 +126,6 @@ VARIANT_DESCRIPTIONS = {
         "Cordeau benchmark; 42 instances. Old set p01-p32, new set pr01-pr10.",
         "All solvers use ALNS over day-combination assignments; inner routing by base solver.",
         "Solvers: PVRP-PyVRP, PVRP-OR-Tools, PVRP-VROOM. No BKS gap reported.",
-        "All runs produced errors in this experiment - success column shows 0/10.",
     ],
 }
 
@@ -347,9 +345,14 @@ def build_variant_table(doc, variant, data):
     set_table_width(table, CONTENT_WIDTH)
     set_fixed_layout(table)
     set_tbl_grid(table, col_widths)
+
+    # Materialise the cell grid once. table.cell(r, c) rebuilds the whole grid on
+    # every call (O(cells) each -> O(cells^2) overall), which makes large tables
+    # take minutes; indexing a prebuilt grid is O(cells) total.
+    grid = [list(r.cells) for r in table.rows]
     for r in range(n_rows):
         for c in range(n_cols):
-            set_cell_width(table.cell(r, c), col_widths[c])
+            set_cell_width(grid[r][c], col_widths[c])
 
     # Pre-compute best cells per comparable metric.
     best = {
@@ -362,7 +365,7 @@ def build_variant_table(doc, variant, data):
     palette = [group_colors(solver, si) for si, solver in enumerate(solvers)]
 
     # --- Row 0: group headers ---
-    merged = table.cell(0, 0).merge(table.cell(0, n_inst - 1))
+    merged = grid[0][0].merge(grid[0][n_inst - 1])
     set_cell_width(merged, n_inst * INST_COL_W)
     style_header_cell(merged, "Instance Features", C_HEADER_NAVY)
     merged.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -370,14 +373,14 @@ def build_variant_table(doc, variant, data):
     for si, solver in enumerate(solvers):
         c0 = n_inst + si * n_metrics
         c1 = c0 + n_metrics - 1
-        mcell = table.cell(0, c0).merge(table.cell(0, c1))
+        mcell = grid[0][c0].merge(grid[0][c1])
         set_cell_width(mcell, sum(col_widths[c0:c1 + 1]))
         style_header_cell(mcell, SOLVER_LABELS.get(solver, solver), palette[si][0])
         mcell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     # --- Row 1: metric sub-headers ---
     for ci, name in enumerate(inst_cols):
-        cell = table.cell(1, ci)
+        cell = grid[1][ci]
         tl, tr = col_group_edges(ci, n_inst, n_metrics, n_cols)
         set_cell_fill(cell, C_INST_HEAD)
         set_cell_borders(cell, thick_left=tl, thick_right=tr)
@@ -388,7 +391,7 @@ def build_variant_table(doc, variant, data):
     for si, solver in enumerate(solvers):
         for mi, metric in enumerate(metrics):
             ci = n_inst + si * n_metrics + mi
-            cell = table.cell(1, ci)
+            cell = grid[1][ci]
             tl, tr = col_group_edges(ci, n_inst, n_metrics, n_cols)
             set_cell_fill(cell, palette[si][1])
             set_cell_borders(cell, thick_left=tl, thick_right=tr)
@@ -400,12 +403,12 @@ def build_variant_table(doc, variant, data):
     # --- Data rows ---
     last_row = len(rows) - 1
     for ri, row in enumerate(rows):
-        table_row = ri + 2
+        cells = grid[ri + 2]
         base_fill = C_WHITE if ri % 2 == 0 else C_ALT_ROW
         thick_bottom = ri == last_row  # table perimeter
 
         for ci, name in enumerate(inst_cols):
-            cell = table.cell(table_row, ci)
+            cell = cells[ci]
             tl, tr = col_group_edges(ci, n_inst, n_metrics, n_cols)
             set_cell_fill(cell, base_fill)
             set_cell_borders(cell, thick_left=tl, thick_right=tr,
@@ -419,7 +422,7 @@ def build_variant_table(doc, variant, data):
         for si, solver in enumerate(solvers):
             for mi, metric in enumerate(metrics):
                 ci = n_inst + si * n_metrics + mi
-                cell = table.cell(table_row, ci)
+                cell = cells[ci]
                 tl, tr = col_group_edges(ci, n_inst, n_metrics, n_cols)
                 value = row.get(f"{solver}_{metric}")
                 is_best = metric in best and solver in best[metric][ri]

@@ -130,6 +130,45 @@ worker processes, cutting wall-clock time roughly N× on a multi-core machine.
 - A solve exception in one cell is captured as `status=error` and never aborts the batch —
   the same guarantee as the sequential mode.
 
+## Reporting (DOCX)
+
+Two standalone scripts under `scripts/` turn `results/results.csv` into a formatted Word
+report comparing every solver across all six variants:
+
+1. `scripts/aggregate.py` reads `results/results.csv` and writes `results/table_data.json`,
+   reducing each `(instance, solver)` cell over its seeds to the mean objective, gap (CVRP
+   only), runtime, and vehicle count over the `ok` runs, plus an `n_ok/n_total` success
+   string. Instance names are normalised (path/extension stripped) so the clean and
+   path-form duplicates a resumed run can leave in the CSV merge into one row.
+2. `scripts/generate_report.py` reads that JSON and writes
+   `results/vrp_benchmark_report.docx`.
+
+Reporting needs **`python-docx`** (`pandas` is already a harness dependency):
+
+```powershell
+.venv\Scripts\python.exe -m pip install python-docx
+.venv\Scripts\python.exe scripts/aggregate.py
+.venv\Scripts\python.exe scripts/generate_report.py
+```
+
+The report is one **landscape-A4 table per variant** (CVRP, VRPTW, MDVRP, VRPMPD, SDVRP,
+PVRP) preceded by a cover page. Each table groups its columns by solver, and the grouping
+is made visually explicit:
+
+- **Thick navy group-boundary lines** separate each solver's column block (and the
+  *Instance Features* block) from its neighbours, while thin gray lines divide the metric
+  columns *inside* a block.
+- **Per-solver colour coding** in the header bands — each solver keeps a consistent hue
+  across every table (PyVRP = blue, OR-Tools = orange, VROOM = green, VRPSolverEasy =
+  purple, Tabu Search = red).
+- **Best-value highlighting** — in each row the minimum of every comparable metric
+  (objective, gap, time, vehicles) is shown in bold, shaded with a lighter tint of that
+  solver's group colour. An em-dash (`—`) marks cells with no successful run, and the
+  `Success` column reports successful runs out of the seed count.
+
+Re-run `aggregate.py` then `generate_report.py` whenever `results/results.csv` changes;
+both outputs land in `results/`.
+
 ## Experiment config (YAML)
 
 ```yaml

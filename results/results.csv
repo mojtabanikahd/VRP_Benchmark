@@ -10998,7 +10998,8 @@ pvrp_benchmark,2026-06-22T23:37:34.835969+00:00,pr10,PVRP,pvrp_vroom,pvrp-alns+1
 pvrp_benchmark,2026-06-22T23:37:35.871285+00:00,pr10,PVRP,pvrp_vroom,pvrp-alns+1.15.2,6,10.0,infeasible,14903.0,,,False,12.752442165015964,72,14903.0,0.0,"customer 107 visit pattern [2, 4] is not an allowed combination (freq 3)"
 pvrp_benchmark,2026-06-22T23:37:37.862701+00:00,pr10,PVRP,pvrp_vroom,pvrp-alns+1.15.2,7,10.0,ok,14910.0,,,True,11.395010220003314,72,14910.0,0.0,
 pvrp_benchmark,2026-06-22T23:37:40.953134+00:00,pr10,PVRP,pvrp_vroom,pvrp-alns+1.15.2,8,10.0,infeasible,15239.0,,,False,11.338206190004712,72,15239.0,0.0,"customer 74 visit pattern [2, 4] is not an allowed combination (freq 3); customer 167 visit pattern [3] is not an allowed combination (freq 2); customer 225 visit pattern [] is not an allowed combination (freq 1)"
-pvrp_benchmark,2026-06-22T23:37:46.952630+00:00,pr10,PVRP,pvrp_vroom,pvrp-alns+1.15.2,9,10.0,infeasible,15075.0,,,False,10.823531556001399,72,15075.0,0.0,customer 167 visit pattern [3] is not an allowed combination (freq 2)mdvrp_benchmark,2026-06-23T15:51:55.955660+00:00,p01,MDVRP,pyvrp,0.11.3,5,10.0,ok,576.0,,,True,10.002707847001147,11,576.0,0.0,
+pvrp_benchmark,2026-06-22T23:37:46.952630+00:00,pr10,PVRP,pvrp_vroom,pvrp-alns+1.15.2,9,10.0,infeasible,15075.0,,,False,10.823531556001399,72,15075.0,0.0,customer 167 visit pattern [3] is not an allowed combination (freq 2)
+mdvrp_benchmark,2026-06-23T15:51:55.955660+00:00,p01,MDVRP,pyvrp,0.11.3,5,10.0,ok,576.0,,,True,10.002707847001147,11,576.0,0.0,
 mdvrp_benchmark,2026-06-23T15:51:55.952443+00:00,p01,MDVRP,pyvrp,0.11.3,3,10.0,ok,576.0,,,True,10.004121479996684,11,576.0,0.0,
 mdvrp_benchmark,2026-06-23T15:51:55.948595+00:00,p01,MDVRP,pyvrp,0.11.3,0,10.0,ok,576.0,,,True,10.004249520003214,11,576.0,0.0,
 mdvrp_benchmark,2026-06-23T15:51:55.948621+00:00,p01,MDVRP,pyvrp,0.11.3,1,10.0,ok,576.0,,,True,10.003832288999547,11,576.0,0.0,
