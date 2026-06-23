@@ -33,16 +33,42 @@ INST_COL_W = 900        # DXA per instance-feature column
 DASH = "—"         # em-dash for null cells
 
 # --- colours (hex, no leading #) ------------------------------------------------
-C_HEADER_NAVY = "1F4E79"
-C_SOLVER_BLUE = "2E75B6"
-C_SUBHEAD_BLUE = "2E6DA4"
-C_INST_HEAD = "2C5282"
-C_ALT_ROW = "EBF3FB"
-C_BEST_GREEN = "E2EFDA"
+C_HEADER_NAVY = "1F4E79"   # Instance Features group header
+C_ACCENT_BLUE = "2E75B6"   # cover-page subtitle accent
+C_INST_HEAD = "2C5282"     # Instance Features sub-header
+C_ALT_ROW = "EBF3FB"       # alternating data-row stripe
 C_WHITE = "FFFFFF"
 C_BODY = "000000"
 C_DESC = "404040"
 C_DATE = "595959"
+
+# Cell border weights (w:sz is in eighths of a point).
+THIN_BORDER_COLOR, THIN_BORDER_SIZE = "BFBFBF", 4     # 0.5 pt: inner column lines
+THICK_BORDER_COLOR, THICK_BORDER_SIZE = "1F4E79", 18  # 2.25 pt: group boundaries
+
+# Per-solver-family palette: (group header, metric sub-header, best-value tint).
+# Headers/sub-headers are dark enough for white text; best tints light enough for
+# dark body text. Each best tint is a lighter shade of its own group's header.
+SOLVER_PALETTE = {
+    "blue":   ("2E75B6", "2E6DA4", "DEEBF7"),
+    "orange": ("C55A11", "B5560F", "FBE5D6"),
+    "green":  ("548235", "4C7A30", "E2EFDA"),
+    "purple": ("7030A0", "67309A", "EBDEF5"),
+    "red":    ("B02418", "A52015", "F8D7DA"),
+}
+
+# Map each solver (and its variant-prefixed cousins) to a colour family so a solver
+# keeps the same hue across every table.
+SOLVER_FAMILY = {
+    "pyvrp": "blue", "sdvrp_pyvrp": "blue", "pvrp_pyvrp": "blue",
+    "ortools": "orange", "sdvrp_ortools": "orange", "pvrp_ortools": "orange",
+    "vroom": "green", "sdvrp_vroom": "green", "pvrp_vroom": "green",
+    "vrpsolvereasy": "purple",
+    "sdvrp_tabu": "red",
+}
+
+# Fallback order for any unmapped solver key (by group position).
+FAMILY_ORDER = ["blue", "orange", "green", "purple", "red"]
 
 SOLVER_LABELS = {
     "pyvrp": "PyVRP",
@@ -167,12 +193,26 @@ def set_tbl_grid(table, col_widths: list[int]):
     tbl.tblPr.addnext(tblGrid)
 
 
-def set_cell_borders(cell, color: str = "BFBFBF", size: int = 4):
+def set_cell_borders(cell, *, thick_left=False, thick_right=False,
+                     thick_top=False, thick_bottom=False):
+    """Single-line borders on all four sides; flagged sides use the thick weight.
+
+    Thick (group-boundary) sides are heavy navy; the rest are the thin gray inner
+    column lines.
+    """
+    thick_sides = {
+        "left": thick_left, "right": thick_right,
+        "top": thick_top, "bottom": thick_bottom,
+    }
     tcPr = cell._tc.get_or_add_tcPr()
     for old in tcPr.findall(qn("w:tcBorders")):
         tcPr.remove(old)
     tcBorders = OxmlElement("w:tcBorders")
     for side in ["top", "left", "bottom", "right"]:
+        if thick_sides[side]:
+            size, color = THICK_BORDER_SIZE, THICK_BORDER_COLOR
+        else:
+            size, color = THIN_BORDER_SIZE, THIN_BORDER_COLOR
         el = OxmlElement(f"w:{side}")
         el.set(qn("w:val"), "single")
         el.set(qn("w:sz"), str(size))
@@ -180,6 +220,23 @@ def set_cell_borders(cell, color: str = "BFBFBF", size: int = 4):
         el.set(qn("w:color"), color)
         tcBorders.append(el)
     tcPr.append(tcBorders)
+
+
+def col_group_edges(c, n_inst, n_metrics, n_cols):
+    """Whether column `c`'s left/right edge is a column-group boundary (thick)."""
+    left = c == 0 or c == n_inst or (c > n_inst and (c - n_inst) % n_metrics == 0)
+    right = (
+        c == n_cols - 1
+        or c == n_inst - 1
+        or (c >= n_inst and (c - n_inst + 1) % n_metrics == 0)
+    )
+    return left, right
+
+
+def group_colors(solver, group_index):
+    """(header, sub-header, best-value tint) for a solver's column group."""
+    family = SOLVER_FAMILY.get(solver, FAMILY_ORDER[group_index % len(FAMILY_ORDER)])
+    return SOLVER_PALETTE[family]
 
 
 def set_cell_margins(cell, top=60, bottom=60, left=80, right=80):
@@ -226,9 +283,10 @@ def write_cell(cell, text, bold=False, font_size_pt=8, color_hex=C_BODY,
     run.font.color.rgb = RGBColor.from_string(color_hex)
 
 
-def style_header_cell(cell, text, fill_hex, border_hex):
+def style_header_cell(cell, text, fill_hex):
+    """Style a merged group-header cell: its left/right/top are group boundaries."""
     set_cell_fill(cell, fill_hex)
-    set_cell_borders(cell, color=border_hex, size=6)
+    set_cell_borders(cell, thick_left=True, thick_right=True, thick_top=True)
     set_cell_margins(cell)
     set_cell_valign(cell)
     write_cell(cell, text, bold=True, font_size_pt=9, color_hex=C_WHITE)
@@ -300,10 +358,13 @@ def build_variant_table(doc, variant, data):
         if m in COMPARABLE_METRICS
     }
 
+    # Resolve each solver group's (header, sub-header, best-value tint) colours.
+    palette = [group_colors(solver, si) for si, solver in enumerate(solvers)]
+
     # --- Row 0: group headers ---
     merged = table.cell(0, 0).merge(table.cell(0, n_inst - 1))
     set_cell_width(merged, n_inst * INST_COL_W)
-    style_header_cell(merged, "Instance Features", C_HEADER_NAVY, C_HEADER_NAVY)
+    style_header_cell(merged, "Instance Features", C_HEADER_NAVY)
     merged.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     for si, solver in enumerate(solvers):
@@ -311,38 +372,44 @@ def build_variant_table(doc, variant, data):
         c1 = c0 + n_metrics - 1
         mcell = table.cell(0, c0).merge(table.cell(0, c1))
         set_cell_width(mcell, sum(col_widths[c0:c1 + 1]))
-        style_header_cell(mcell, SOLVER_LABELS.get(solver, solver),
-                          C_SOLVER_BLUE, C_SOLVER_BLUE)
+        style_header_cell(mcell, SOLVER_LABELS.get(solver, solver), palette[si][0])
         mcell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     # --- Row 1: metric sub-headers ---
     for ci, name in enumerate(inst_cols):
         cell = table.cell(1, ci)
+        tl, tr = col_group_edges(ci, n_inst, n_metrics, n_cols)
         set_cell_fill(cell, C_INST_HEAD)
-        set_cell_borders(cell)
+        set_cell_borders(cell, thick_left=tl, thick_right=tr)
         set_cell_margins(cell)
         set_cell_valign(cell)
         write_cell(cell, name, bold=True, font_size_pt=9, color_hex=C_WHITE)
 
     for si, solver in enumerate(solvers):
         for mi, metric in enumerate(metrics):
-            cell = table.cell(1, n_inst + si * n_metrics + mi)
-            set_cell_fill(cell, C_SUBHEAD_BLUE)
-            set_cell_borders(cell)
+            ci = n_inst + si * n_metrics + mi
+            cell = table.cell(1, ci)
+            tl, tr = col_group_edges(ci, n_inst, n_metrics, n_cols)
+            set_cell_fill(cell, palette[si][1])
+            set_cell_borders(cell, thick_left=tl, thick_right=tr)
             set_cell_margins(cell)
             set_cell_valign(cell)
             write_cell(cell, METRIC_LABELS.get(metric, metric),
                        bold=True, font_size_pt=9, color_hex=C_WHITE)
 
     # --- Data rows ---
+    last_row = len(rows) - 1
     for ri, row in enumerate(rows):
         table_row = ri + 2
         base_fill = C_WHITE if ri % 2 == 0 else C_ALT_ROW
+        thick_bottom = ri == last_row  # table perimeter
 
         for ci, name in enumerate(inst_cols):
             cell = table.cell(table_row, ci)
+            tl, tr = col_group_edges(ci, n_inst, n_metrics, n_cols)
             set_cell_fill(cell, base_fill)
-            set_cell_borders(cell)
+            set_cell_borders(cell, thick_left=tl, thick_right=tr,
+                             thick_bottom=thick_bottom)
             set_cell_margins(cell)
             set_cell_valign(cell)
             align = WD_ALIGN_PARAGRAPH.LEFT if ci == 0 else WD_ALIGN_PARAGRAPH.CENTER
@@ -351,11 +418,14 @@ def build_variant_table(doc, variant, data):
 
         for si, solver in enumerate(solvers):
             for mi, metric in enumerate(metrics):
-                cell = table.cell(table_row, n_inst + si * n_metrics + mi)
+                ci = n_inst + si * n_metrics + mi
+                cell = table.cell(table_row, ci)
+                tl, tr = col_group_edges(ci, n_inst, n_metrics, n_cols)
                 value = row.get(f"{solver}_{metric}")
                 is_best = metric in best and solver in best[metric][ri]
-                set_cell_fill(cell, C_BEST_GREEN if is_best else base_fill)
-                set_cell_borders(cell)
+                set_cell_fill(cell, palette[si][2] if is_best else base_fill)
+                set_cell_borders(cell, thick_left=tl, thick_right=tr,
+                                 thick_bottom=thick_bottom)
                 set_cell_margins(cell)
                 set_cell_valign(cell)
                 write_cell(cell, fmt(value), bold=is_best, font_size_pt=8,
@@ -379,7 +449,7 @@ def add_cover_page(doc):
     run = subtitle.add_run(
         "Comparative evaluation of solver performance across six VRP variants")
     run.font.size = Pt(12)
-    run.font.color.rgb = RGBColor.from_string(C_SOLVER_BLUE)
+    run.font.color.rgb = RGBColor.from_string(C_ACCENT_BLUE)
 
     date_p = doc.add_paragraph()
     date_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
