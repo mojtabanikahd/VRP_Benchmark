@@ -21,7 +21,7 @@
     "rows": [
       {
         "Instance": "X-n101-k25",
-        "Customers (n)": 101,
+        "Customers (n)": 100,
         "Vehicles (k)": 25,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 27598.3,
@@ -46,7 +46,7 @@
       },
       {
         "Instance": "X-n106-k14",
-        "Customers (n)": 106,
+        "Customers (n)": 105,
         "Vehicles (k)": 14,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 26485.7,
@@ -71,7 +71,7 @@
       },
       {
         "Instance": "X-n110-k13",
-        "Customers (n)": 110,
+        "Customers (n)": 109,
         "Vehicles (k)": 13,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 14978.8,
@@ -96,7 +96,7 @@
       },
       {
         "Instance": "X-n115-k10",
-        "Customers (n)": 115,
+        "Customers (n)": 114,
         "Vehicles (k)": 10,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 12753.4,
@@ -121,7 +121,7 @@
       },
       {
         "Instance": "X-n120-k6",
-        "Customers (n)": 120,
+        "Customers (n)": 119,
         "Vehicles (k)": 6,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 13353.8,
@@ -146,7 +146,7 @@
       },
       {
         "Instance": "X-n125-k30",
-        "Customers (n)": 125,
+        "Customers (n)": 124,
         "Vehicles (k)": 30,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 55732.3,
@@ -171,7 +171,7 @@
       },
       {
         "Instance": "X-n129-k18",
-        "Customers (n)": 129,
+        "Customers (n)": 128,
         "Vehicles (k)": 18,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 29149.7,
@@ -196,7 +196,7 @@
       },
       {
         "Instance": "X-n134-k13",
-        "Customers (n)": 134,
+        "Customers (n)": 133,
         "Vehicles (k)": 13,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 10978.0,
@@ -221,7 +221,7 @@
       },
       {
         "Instance": "X-n139-k10",
-        "Customers (n)": 139,
+        "Customers (n)": 138,
         "Vehicles (k)": 10,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 13631.3,
@@ -246,7 +246,7 @@
       },
       {
         "Instance": "X-n143-k7",
-        "Customers (n)": 143,
+        "Customers (n)": 142,
         "Vehicles (k)": 7,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 15747.0,
@@ -271,7 +271,7 @@
       },
       {
         "Instance": "X-n148-k46",
-        "Customers (n)": 148,
+        "Customers (n)": 147,
         "Vehicles (k)": 46,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 43848.8,
@@ -296,7 +296,7 @@
       },
       {
         "Instance": "X-n153-k22",
-        "Customers (n)": 153,
+        "Customers (n)": 152,
         "Vehicles (k)": 22,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 21303.9,
@@ -321,7 +321,7 @@
       },
       {
         "Instance": "X-n157-k13",
-        "Customers (n)": 157,
+        "Customers (n)": 156,
         "Vehicles (k)": 13,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 16942.4,
@@ -346,7 +346,7 @@
       },
       {
         "Instance": "X-n162-k11",
-        "Customers (n)": 162,
+        "Customers (n)": 161,
         "Vehicles (k)": 11,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 14164.2,
@@ -371,7 +371,7 @@
       },
       {
         "Instance": "X-n167-k10",
-        "Customers (n)": 167,
+        "Customers (n)": 166,
         "Vehicles (k)": 10,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 20764.7,
@@ -396,7 +396,7 @@
       },
       {
         "Instance": "X-n172-k51",
-        "Customers (n)": 172,
+        "Customers (n)": 171,
         "Vehicles (k)": 51,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 45731.9,
@@ -421,7 +421,7 @@
       },
       {
         "Instance": "X-n176-k26",
-        "Customers (n)": 176,
+        "Customers (n)": 175,
         "Vehicles (k)": 26,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 48280.4,
@@ -446,7 +446,7 @@
       },
       {
         "Instance": "X-n181-k23",
-        "Customers (n)": 181,
+        "Customers (n)": 180,
         "Vehicles (k)": 23,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 25734.8,
@@ -471,7 +471,7 @@
       },
       {
         "Instance": "X-n186-k15",
-        "Customers (n)": 186,
+        "Customers (n)": 185,
         "Vehicles (k)": 15,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 24279.5,
@@ -496,7 +496,7 @@
       },
       {
         "Instance": "X-n190-k8",
-        "Customers (n)": 190,
+        "Customers (n)": 189,
         "Vehicles (k)": 8,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 17245.7,
@@ -521,7 +521,7 @@
       },
       {
         "Instance": "X-n195-k51",
-        "Customers (n)": 195,
+        "Customers (n)": 194,
         "Vehicles (k)": 51,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 44438.1,
@@ -546,7 +546,7 @@
       },
       {
         "Instance": "X-n200-k36",
-        "Customers (n)": 200,
+        "Customers (n)": 199,
         "Vehicles (k)": 36,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 59064.6,
@@ -571,7 +571,7 @@
       },
       {
         "Instance": "X-n204-k19",
-        "Customers (n)": 204,
+        "Customers (n)": 203,
         "Vehicles (k)": 19,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 19742.5,
@@ -596,7 +596,7 @@
       },
       {
         "Instance": "X-n209-k16",
-        "Customers (n)": 209,
+        "Customers (n)": 208,
         "Vehicles (k)": 16,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 31344.8,
@@ -621,7 +621,7 @@
       },
       {
         "Instance": "X-n214-k11",
-        "Customers (n)": 214,
+        "Customers (n)": 213,
         "Vehicles (k)": 11,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 11023.3,
@@ -646,7 +646,7 @@
       },
       {
         "Instance": "X-n219-k73",
-        "Customers (n)": 219,
+        "Customers (n)": 218,
         "Vehicles (k)": 73,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 117756.3,
@@ -671,7 +671,7 @@
       },
       {
         "Instance": "X-n223-k34",
-        "Customers (n)": 223,
+        "Customers (n)": 222,
         "Vehicles (k)": 34,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 41409.7,
@@ -696,7 +696,7 @@
       },
       {
         "Instance": "X-n228-k23",
-        "Customers (n)": 228,
+        "Customers (n)": 227,
         "Vehicles (k)": 23,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 26015.0,
@@ -721,7 +721,7 @@
       },
       {
         "Instance": "X-n233-k16",
-        "Customers (n)": 233,
+        "Customers (n)": 232,
         "Vehicles (k)": 16,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 19448.5,
@@ -746,7 +746,7 @@
       },
       {
         "Instance": "X-n237-k14",
-        "Customers (n)": 237,
+        "Customers (n)": 236,
         "Vehicles (k)": 14,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 27499.5,
@@ -771,7 +771,7 @@
       },
       {
         "Instance": "X-n242-k48",
-        "Customers (n)": 242,
+        "Customers (n)": 241,
         "Vehicles (k)": 48,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 84149.4,
@@ -796,7 +796,7 @@
       },
       {
         "Instance": "X-n247-k50",
-        "Customers (n)": 247,
+        "Customers (n)": 246,
         "Vehicles (k)": 50,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 37678.8,
@@ -821,7 +821,7 @@
       },
       {
         "Instance": "X-n251-k28",
-        "Customers (n)": 251,
+        "Customers (n)": 250,
         "Vehicles (k)": 28,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 39713.7,
@@ -846,7 +846,7 @@
       },
       {
         "Instance": "X-n256-k16",
-        "Customers (n)": 256,
+        "Customers (n)": 255,
         "Vehicles (k)": 16,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 19033.4,
@@ -871,7 +871,7 @@
       },
       {
         "Instance": "X-n261-k13",
-        "Customers (n)": 261,
+        "Customers (n)": 260,
         "Vehicles (k)": 13,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 27288.6,
@@ -896,7 +896,7 @@
       },
       {
         "Instance": "X-n266-k58",
-        "Customers (n)": 266,
+        "Customers (n)": 265,
         "Vehicles (k)": 58,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 76986.6,
@@ -921,7 +921,7 @@
       },
       {
         "Instance": "X-n270-k35",
-        "Customers (n)": 270,
+        "Customers (n)": 269,
         "Vehicles (k)": 35,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 35594.1,
@@ -946,7 +946,7 @@
       },
       {
         "Instance": "X-n275-k28",
-        "Customers (n)": 275,
+        "Customers (n)": 274,
         "Vehicles (k)": 28,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 21483.8,
@@ -971,7 +971,7 @@
       },
       {
         "Instance": "X-n280-k17",
-        "Customers (n)": 280,
+        "Customers (n)": 279,
         "Vehicles (k)": 17,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 34139.8,
@@ -996,7 +996,7 @@
       },
       {
         "Instance": "X-n284-k15",
-        "Customers (n)": 284,
+        "Customers (n)": 283,
         "Vehicles (k)": 15,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 20905.5,
@@ -1021,7 +1021,7 @@
       },
       {
         "Instance": "X-n289-k60",
-        "Customers (n)": 289,
+        "Customers (n)": 288,
         "Vehicles (k)": 60,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 97346.3,
@@ -1046,7 +1046,7 @@
       },
       {
         "Instance": "X-n294-k50",
-        "Customers (n)": 294,
+        "Customers (n)": 293,
         "Vehicles (k)": 50,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 47827.0,
@@ -1071,7 +1071,7 @@
       },
       {
         "Instance": "X-n298-k31",
-        "Customers (n)": 298,
+        "Customers (n)": 297,
         "Vehicles (k)": 31,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 35092.9,
@@ -1096,7 +1096,7 @@
       },
       {
         "Instance": "X-n303-k21",
-        "Customers (n)": 303,
+        "Customers (n)": 302,
         "Vehicles (k)": 21,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 22189.0,
@@ -1121,7 +1121,7 @@
       },
       {
         "Instance": "X-n308-k13",
-        "Customers (n)": 308,
+        "Customers (n)": 307,
         "Vehicles (k)": 13,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 26601.5,
@@ -1146,7 +1146,7 @@
       },
       {
         "Instance": "X-n313-k71",
-        "Customers (n)": 313,
+        "Customers (n)": 312,
         "Vehicles (k)": 71,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 95724.9,
@@ -1171,7 +1171,7 @@
       },
       {
         "Instance": "X-n317-k53",
-        "Customers (n)": 317,
+        "Customers (n)": 316,
         "Vehicles (k)": 53,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 78665.3,
@@ -1196,7 +1196,7 @@
       },
       {
         "Instance": "X-n322-k28",
-        "Customers (n)": 322,
+        "Customers (n)": 321,
         "Vehicles (k)": 28,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 30362.7,
@@ -1221,7 +1221,7 @@
       },
       {
         "Instance": "X-n327-k20",
-        "Customers (n)": 327,
+        "Customers (n)": 326,
         "Vehicles (k)": 20,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 28430.1,
@@ -1246,7 +1246,7 @@
       },
       {
         "Instance": "X-n331-k15",
-        "Customers (n)": 331,
+        "Customers (n)": 330,
         "Vehicles (k)": 15,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 32163.9,
@@ -1271,7 +1271,7 @@
       },
       {
         "Instance": "X-n336-k84",
-        "Customers (n)": 336,
+        "Customers (n)": 335,
         "Vehicles (k)": 84,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 142342.7,
@@ -1296,7 +1296,7 @@
       },
       {
         "Instance": "X-n344-k43",
-        "Customers (n)": 344,
+        "Customers (n)": 343,
         "Vehicles (k)": 43,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 43067.7,
@@ -1321,7 +1321,7 @@
       },
       {
         "Instance": "X-n351-k40",
-        "Customers (n)": 351,
+        "Customers (n)": 350,
         "Vehicles (k)": 40,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 26764.6,
@@ -1346,7 +1346,7 @@
       },
       {
         "Instance": "X-n359-k29",
-        "Customers (n)": 359,
+        "Customers (n)": 358,
         "Vehicles (k)": 29,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 53229.3,
@@ -1371,7 +1371,7 @@
       },
       {
         "Instance": "X-n367-k17",
-        "Customers (n)": 367,
+        "Customers (n)": 366,
         "Vehicles (k)": 17,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 23558.2,
@@ -1396,7 +1396,7 @@
       },
       {
         "Instance": "X-n376-k94",
-        "Customers (n)": 376,
+        "Customers (n)": 375,
         "Vehicles (k)": 94,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 148487.9,
@@ -1421,7 +1421,7 @@
       },
       {
         "Instance": "X-n384-k52",
-        "Customers (n)": 384,
+        "Customers (n)": 383,
         "Vehicles (k)": 52,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 67873.0,
@@ -1446,7 +1446,7 @@
       },
       {
         "Instance": "X-n393-k38",
-        "Customers (n)": 393,
+        "Customers (n)": 392,
         "Vehicles (k)": 38,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 39314.0,
@@ -1471,7 +1471,7 @@
       },
       {
         "Instance": "X-n401-k29",
-        "Customers (n)": 401,
+        "Customers (n)": 400,
         "Vehicles (k)": 29,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 67544.9,
@@ -1496,7 +1496,7 @@
       },
       {
         "Instance": "X-n411-k19",
-        "Customers (n)": 411,
+        "Customers (n)": 410,
         "Vehicles (k)": 19,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 20397.1,
@@ -1521,7 +1521,7 @@
       },
       {
         "Instance": "X-n420-k130",
-        "Customers (n)": 420,
+        "Customers (n)": 419,
         "Vehicles (k)": 130,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 109280.6,
@@ -1546,7 +1546,7 @@
       },
       {
         "Instance": "X-n429-k61",
-        "Customers (n)": 429,
+        "Customers (n)": 428,
         "Vehicles (k)": 61,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 67065.4,
@@ -1571,7 +1571,7 @@
       },
       {
         "Instance": "X-n439-k37",
-        "Customers (n)": 439,
+        "Customers (n)": 438,
         "Vehicles (k)": 37,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 37159.3,
@@ -1596,7 +1596,7 @@
       },
       {
         "Instance": "X-n449-k29",
-        "Customers (n)": 449,
+        "Customers (n)": 448,
         "Vehicles (k)": 29,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 57711.5,
@@ -1621,7 +1621,7 @@
       },
       {
         "Instance": "X-n459-k26",
-        "Customers (n)": 459,
+        "Customers (n)": 458,
         "Vehicles (k)": 26,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 25043.3,
@@ -1646,7 +1646,7 @@
       },
       {
         "Instance": "X-n469-k138",
-        "Customers (n)": 469,
+        "Customers (n)": 468,
         "Vehicles (k)": 138,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 226244.9,
@@ -1671,7 +1671,7 @@
       },
       {
         "Instance": "X-n480-k70",
-        "Customers (n)": 480,
+        "Customers (n)": 479,
         "Vehicles (k)": 70,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 91837.6,
@@ -1696,7 +1696,7 @@
       },
       {
         "Instance": "X-n491-k59",
-        "Customers (n)": 491,
+        "Customers (n)": 490,
         "Vehicles (k)": 59,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 68855.5,
@@ -1721,7 +1721,7 @@
       },
       {
         "Instance": "X-n502-k39",
-        "Customers (n)": 502,
+        "Customers (n)": 501,
         "Vehicles (k)": 39,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 70006.4,
@@ -1746,7 +1746,7 @@
       },
       {
         "Instance": "X-n513-k21",
-        "Customers (n)": 513,
+        "Customers (n)": 512,
         "Vehicles (k)": 21,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 25120.1,
@@ -1771,7 +1771,7 @@
       },
       {
         "Instance": "X-n524-k153",
-        "Customers (n)": 524,
+        "Customers (n)": 523,
         "Vehicles (k)": 153,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 156828.7,
@@ -1796,7 +1796,7 @@
       },
       {
         "Instance": "X-n536-k96",
-        "Customers (n)": 536,
+        "Customers (n)": 535,
         "Vehicles (k)": 96,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 96986.2,
@@ -1821,7 +1821,7 @@
       },
       {
         "Instance": "X-n548-k50",
-        "Customers (n)": 548,
+        "Customers (n)": 547,
         "Vehicles (k)": 50,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 88756.5,
@@ -1846,7 +1846,7 @@
       },
       {
         "Instance": "X-n561-k42",
-        "Customers (n)": 561,
+        "Customers (n)": 560,
         "Vehicles (k)": 42,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 44384.1,
@@ -1871,7 +1871,7 @@
       },
       {
         "Instance": "X-n573-k30",
-        "Customers (n)": 573,
+        "Customers (n)": 572,
         "Vehicles (k)": 30,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 52158.9,
@@ -1896,7 +1896,7 @@
       },
       {
         "Instance": "X-n586-k159",
-        "Customers (n)": 586,
+        "Customers (n)": 585,
         "Vehicles (k)": 159,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 193953.3,
@@ -1921,7 +1921,7 @@
       },
       {
         "Instance": "X-n599-k92",
-        "Customers (n)": 599,
+        "Customers (n)": 598,
         "Vehicles (k)": 92,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 111575.3,
@@ -1946,7 +1946,7 @@
       },
       {
         "Instance": "X-n613-k62",
-        "Customers (n)": 613,
+        "Customers (n)": 612,
         "Vehicles (k)": 62,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 62090.4,
@@ -1971,7 +1971,7 @@
       },
       {
         "Instance": "X-n627-k43",
-        "Customers (n)": 627,
+        "Customers (n)": 626,
         "Vehicles (k)": 43,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 64344.7,
@@ -1996,7 +1996,7 @@
       },
       {
         "Instance": "X-n641-k35",
-        "Customers (n)": 641,
+        "Customers (n)": 640,
         "Vehicles (k)": 35,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 66444.1,
@@ -2021,7 +2021,7 @@
       },
       {
         "Instance": "X-n655-k131",
-        "Customers (n)": 655,
+        "Customers (n)": 654,
         "Vehicles (k)": 131,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 107758.0,
@@ -2046,7 +2046,7 @@
       },
       {
         "Instance": "X-n670-k130",
-        "Customers (n)": 670,
+        "Customers (n)": 669,
         "Vehicles (k)": 130,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 151030.0,
@@ -2071,7 +2071,7 @@
       },
       {
         "Instance": "X-n685-k75",
-        "Customers (n)": 685,
+        "Customers (n)": 684,
         "Vehicles (k)": 75,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 70695.6,
@@ -2096,7 +2096,7 @@
       },
       {
         "Instance": "X-n701-k44",
-        "Customers (n)": 701,
+        "Customers (n)": 700,
         "Vehicles (k)": 44,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 85334.4,
@@ -2121,7 +2121,7 @@
       },
       {
         "Instance": "X-n716-k35",
-        "Customers (n)": 716,
+        "Customers (n)": 715,
         "Vehicles (k)": 35,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 44992.5,
@@ -2146,7 +2146,7 @@
       },
       {
         "Instance": "X-n733-k159",
-        "Customers (n)": 733,
+        "Customers (n)": 732,
         "Vehicles (k)": 159,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 140569.6,
@@ -2171,7 +2171,7 @@
       },
       {
         "Instance": "X-n749-k98",
-        "Customers (n)": 749,
+        "Customers (n)": 748,
         "Vehicles (k)": 98,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 80270.3,
@@ -2196,7 +2196,7 @@
       },
       {
         "Instance": "X-n766-k71",
-        "Customers (n)": 766,
+        "Customers (n)": 765,
         "Vehicles (k)": 71,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 118224.2,
@@ -2221,7 +2221,7 @@
       },
       {
         "Instance": "X-n783-k48",
-        "Customers (n)": 783,
+        "Customers (n)": 782,
         "Vehicles (k)": 48,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 76074.5,
@@ -2246,7 +2246,7 @@
       },
       {
         "Instance": "X-n801-k40",
-        "Customers (n)": 801,
+        "Customers (n)": 800,
         "Vehicles (k)": 40,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 76668.2,
@@ -2271,7 +2271,7 @@
       },
       {
         "Instance": "X-n819-k171",
-        "Customers (n)": 819,
+        "Customers (n)": 818,
         "Vehicles (k)": 171,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 161797.7,
@@ -2296,7 +2296,7 @@
       },
       {
         "Instance": "X-n837-k142",
-        "Customers (n)": 837,
+        "Customers (n)": 836,
         "Vehicles (k)": 142,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 198680.7,
@@ -2321,7 +2321,7 @@
       },
       {
         "Instance": "X-n856-k95",
-        "Customers (n)": 856,
+        "Customers (n)": 855,
         "Vehicles (k)": 95,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 90955.1,
@@ -2346,7 +2346,7 @@
       },
       {
         "Instance": "X-n876-k59",
-        "Customers (n)": 876,
+        "Customers (n)": 875,
         "Vehicles (k)": 59,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 102404.3,
@@ -2371,7 +2371,7 @@
       },
       {
         "Instance": "X-n895-k37",
-        "Customers (n)": 895,
+        "Customers (n)": 894,
         "Vehicles (k)": 37,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 56805.2,
@@ -2396,7 +2396,7 @@
       },
       {
         "Instance": "X-n916-k207",
-        "Customers (n)": 916,
+        "Customers (n)": 915,
         "Vehicles (k)": 207,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 335141.0,
@@ -2421,7 +2421,7 @@
       },
       {
         "Instance": "X-n936-k151",
-        "Customers (n)": 936,
+        "Customers (n)": 935,
         "Vehicles (k)": 151,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 138187.6,
@@ -2446,7 +2446,7 @@
       },
       {
         "Instance": "X-n957-k87",
-        "Customers (n)": 957,
+        "Customers (n)": 956,
         "Vehicles (k)": 87,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 88050.4,
@@ -2471,7 +2471,7 @@
       },
       {
         "Instance": "X-n979-k58",
-        "Customers (n)": 979,
+        "Customers (n)": 978,
         "Vehicles (k)": 58,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 121815.7,
@@ -2496,7 +2496,7 @@
       },
       {
         "Instance": "X-n1001-k43",
-        "Customers (n)": 1001,
+        "Customers (n)": 1000,
         "Vehicles (k)": 43,
         "pyvrp_success": "10/10",
         "pyvrp_obj": 76654.1,

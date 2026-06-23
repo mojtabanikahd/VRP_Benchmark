@@ -80,10 +80,13 @@ def _mean(series, ndigits: int):
 
 def _features_cvrp(name: str):
     m = re.search(r"X-n(\d+)-k(\d+)", name)
-    n = int(m.group(1)) if m else None
+    nodes = int(m.group(1)) if m else None
     k = int(m.group(2)) if m else None
-    cols = {"Instance": name, "Customers (n)": n, "Vehicles (k)": k}
-    return cols, (n if n is not None else 1 << 30, name)
+    # The "n" in the X-set name counts all nodes (depot + customers); the depot is
+    # not a customer, so the customer count is n - 1 (e.g. X-n101-k25 has 100).
+    customers = nodes - 1 if nodes is not None else None
+    cols = {"Instance": name, "Customers (n)": customers, "Vehicles (k)": k}
+    return cols, (nodes if nodes is not None else 1 << 30, name)
 
 
 def _features_vrptw(name: str):

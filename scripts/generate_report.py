@@ -97,8 +97,8 @@ COMPARABLE_METRICS = {"obj", "gap", "time", "nveh"}
 
 VARIANT_DESCRIPTIONS = {
     "CVRP": [
-        "Uchoa et al. X-set (2017); 100 instances, 101-1001 customers.",
-        "Instance name encodes n (customers) and k (vehicles in BKS).",
+        "Uchoa et al. X-set (2017); 100 instances, 100-1000 customers.",
+        "Instance name X-n<N>-k<K> encodes N = nodes (depot + customers) and K = vehicles in BKS; Customers (n) = N - 1.",
         "Solvers: PyVRP, OR-Tools, VROOM, VRPSolverEasy (exact BCP - most cells infeasible at 10 s).",
         "Gap (%) relative to best-known solution. Lower is better for all metrics.",
     ],
