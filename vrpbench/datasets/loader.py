@@ -144,7 +144,11 @@ def _load_cordeau_mdvrp(path: str | os.PathLike) -> Instance:
         cap = int(next(tokens))  # Q = vehicle capacity (homogeneous across depots)
         capacity = cap if capacity is None else capacity
 
-    # Customer lines: id, x, y, service (ignored), demand, then 6 PVRP tokens (dropped).
+    # Customer lines are VARIABLE WIDTH: id, x, y, service (ignored), demand,
+    # frequency, then ncombi depot-combination codes (all dropped — every depot is
+    # eligible in this MDVRP build). ncombi == t, so it differs per instance; reading a
+    # fixed count misaligns the token stream (too few → silent corruption, too many →
+    # StopIteration). Read ncombi from the line and skip exactly that many codes.
     cust_coords: list[tuple[float, float]] = []
     cust_demands: list[int] = []
     for _ in range(num_customers):
@@ -154,17 +158,22 @@ def _load_cordeau_mdvrp(path: str | os.PathLike) -> Instance:
         next(tokens)  # service time — ignored (no time windows in this MDVRP build)
         cust_demands.append(int(float(next(tokens))))
         cust_coords.append((cx, cy))
-        for _ in range(6):  # PVRP visit-frequency / day-combination metadata
+        next(tokens)  # frequency — always 1 for MDVRP
+        for _ in range(int(float(next(tokens)))):  # ncombi depot-combination codes
             next(tokens)
 
-    # Depot coordinate lines: id, x, y, then 4 trailing tokens (dropped).
+    # Depot coordinate lines share the same variable-width layout (ncombi is 0 here, so
+    # no codes follow), but parse it the same way to stay robust.
     depot_coords: list[tuple[float, float]] = []
     for _ in range(num_depots):
         next(tokens)  # id (file-local, ignored)
         dx = float(next(tokens))
         dy = float(next(tokens))
         depot_coords.append((dx, dy))
-        for _ in range(4):
+        next(tokens)  # service time — ignored
+        next(tokens)  # demand — depots carry none
+        next(tokens)  # frequency
+        for _ in range(int(float(next(tokens)))):  # ncombi codes (0 for depots)
             next(tokens)
 
     # Depots first (indices 0..t-1), then customers (t..t+n-1).

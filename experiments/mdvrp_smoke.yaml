@@ -10,5 +10,6 @@ solvers: [pyvrp, ortools, vroom]
 datasets:
   - variant: MDVRP
     instances:
-      - data/instances/MDVRP/old/p01.txt
+      - data/instances/MDVRP/old/p09.txt
+      - data/instances/MDVRP/old/p03.txt
       - data/instances/MDVRP/old/p02.txt
