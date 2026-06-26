@@ -109,6 +109,7 @@ VARIANT_DESCRIPTIONS = {
     ],
     "MDVRP": [
         "Cordeau benchmark; 33 instances. Old set p01-p23, new set pr01-pr10.",
+        "n = customers, k = vehicles per depot, h = depots (from the instance file).",
         "Solvers: PyVRP, OR-Tools, VROOM. VRPSolverEasy excluded (no multi-depot support).",
         "No BKS gap reported for MDVRP.",
     ],

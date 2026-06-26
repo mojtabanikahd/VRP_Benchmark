@@ -21,6 +21,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 CSV_PATH = os.path.join(ROOT, "results", "results.csv")
 JSON_PATH = os.path.join(ROOT, "results", "table_data.json")
+MDVRP_DIR = os.path.join(ROOT, "data", "instances", "MDVRP")
 
 # Per-variant solver lists (display order) and reported metrics.
 VARIANT_SPEC = {
@@ -37,7 +38,7 @@ VARIANT_SPEC = {
     "MDVRP": {
         "solvers": ["pyvrp", "ortools", "vroom"],
         "metrics": ["obj", "time", "nveh", "success"],
-        "inst_cols": ["Instance", "Set"],
+        "inst_cols": ["Instance", "Set", "Customers (n)", "Vehicles (k)", "Depots (h)"],
     },
     "VRPMPD": {
         "solvers": ["pyvrp", "ortools", "vroom"],
@@ -97,11 +98,43 @@ def _features_vrptw(name: str):
 
 
 def _features_pset(name: str):
-    """MDVRP / SDVRP / PVRP: old (p\\d...) vs new (pr...), sorted by number."""
+    """SDVRP / PVRP: old (p\\d...) vs new (pr...), sorted by number."""
     is_old = bool(re.match(r"^p\d", name))
     m = re.search(r"(\d+)", name)
     num = int(m.group(1)) if m else 0
     cols = {"Instance": name, "Set": "old" if is_old else "new"}
+    return cols, (0 if is_old else 1, num, name)
+
+
+def _read_mdvrp_params(name: str, is_old: bool):
+    """Parse the Cordeau MDVRP first line `type m n t` -> (m, n, t) as ints.
+
+    m = vehicles per depot, n = customers, t = depots. Returns (None, None, None)
+    if the instance file is missing or unparseable.
+    """
+    path = os.path.join(MDVRP_DIR, "old" if is_old else "new", name + ".txt")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            tokens = fh.readline().split()
+        _type, m, n, t = (int(tokens[i]) for i in range(4))
+        return m, n, t
+    except (OSError, ValueError, IndexError):
+        return None, None, None
+
+
+def _features_mdvrp(name: str):
+    """MDVRP: like _features_pset, plus n/k/h read from the instance file."""
+    is_old = bool(re.match(r"^p\d", name))
+    num_match = re.search(r"(\d+)", name)
+    num = int(num_match.group(1)) if num_match else 0
+    m, n, t = _read_mdvrp_params(name, is_old)
+    cols = {
+        "Instance": name,
+        "Set": "old" if is_old else "new",
+        "Customers (n)": n,
+        "Vehicles (k)": m,
+        "Depots (h)": t,
+    }
     return cols, (0 if is_old else 1, num, name)
 
 
@@ -123,7 +156,7 @@ def _features_vrpmpd(name: str):
 FEATURE_FUNCS = {
     "CVRP": _features_cvrp,
     "VRPTW": _features_vrptw,
-    "MDVRP": _features_pset,
+    "MDVRP": _features_mdvrp,
     "VRPMPD": _features_vrpmpd,
     "SDVRP": _features_pset,
     "PVRP": _features_pset,
