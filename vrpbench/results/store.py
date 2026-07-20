@@ -57,10 +57,12 @@ class RunRecord:
     error: str = ""
     # Detail-only (not written to CSV):
     routes: list[list[int]] = field(default_factory=list)
+    route_deliveries: list[dict[int, int]] = field(default_factory=list)
 
     def csv_row(self) -> dict:
         d = asdict(self)
         d.pop("routes", None)
+        d.pop("route_deliveries", None)
         return {k: d[k] for k in FIELDNAMES}
 
 
@@ -85,13 +87,14 @@ class ResultStore:
         with self.csv_path.open(encoding="utf-8", newline="") as fh:
             for row in csv.DictReader(fh):
                 try:
-                    done.add((
-                        row["run_id"],
-                        row["instance_name"],
-                        row["variant"],
-                        row["solver"],
-                        int(row["seed"]),
-                    ))
+                    if row["run_id"] == run_id:
+                        done.add((
+                            row["run_id"],
+                            row["instance_name"],
+                            row["variant"],
+                            row["solver"],
+                            int(row["seed"]),
+                        ))
                 except (KeyError, ValueError):
                     pass  # malformed row -> treat cell as not-done (safe: re-run it)
         return frozenset(done)

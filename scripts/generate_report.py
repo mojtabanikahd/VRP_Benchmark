@@ -119,9 +119,9 @@ VARIANT_DESCRIPTIONS = {
         "Solvers: PyVRP, OR-Tools, VROOM. No BKS gap reported.",
     ],
     "SDVRP": [
-        "Cordeau type-3 benchmark; 35 instances. Old set p01-p23, new set pr01-pr12.",
-        "Tabu Search is self-contained; SDVRP-PyVRP/OR-Tools/VROOM seed initial solution from base solver.",
-        "Solvers: Tabu Search, SDVRP-PyVRP, SDVRP-OR-Tools, SDVRP-VROOM. No BKS gap reported.",
+        "DIMACS R1 Split Delivery VRP benchmark; 95 instances across SET-1 through SET-4.",
+        "Homogeneous capacity, split deliveries allowed, no site-dependent vehicle types or hard fleet cap.",
+        "Solvers: Tabu Search, SDVRP-PyVRP, SDVRP-OR-Tools, SDVRP-VROOM. Gap (%) relative to official post-challenge best-known solutions.",
     ],
     "PVRP": [
         "Cordeau benchmark; 42 instances. Old set p01-p32, new set pr01-pr10.",

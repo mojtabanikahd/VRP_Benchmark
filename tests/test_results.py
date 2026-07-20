@@ -53,15 +53,16 @@ def test_resume_appends_without_duplicate_header(tmp_path):
 
 def test_detail_json_written(tmp_path):
     store = ResultStore(tmp_path, store_detail=True)
-    store.append(_record(routes=[[1, 2], [3]]))
+    store.append(_record(routes=[[1, 2], [3]], route_deliveries=[{1: 4, 2: 4}, {3: 8}]))
     files = list((tmp_path / "runs").glob("*.json"))
     assert len(files) == 1
     payload = json.loads(files[0].read_text())
     assert payload["routes"] == [[1, 2], [3]]
+    assert payload["route_deliveries"] == [{"1": 4, "2": 4}, {"3": 8}]
 
 
 def test_load_done_keys_missing_file(tmp_path):
-    assert ResultStore(tmp_path).load_done_keys() == frozenset()
+    assert ResultStore(tmp_path).load_done_keys("r1") == frozenset()
 
 
 def test_load_done_keys_returns_exact_keys_regardless_of_status(tmp_path):
@@ -69,11 +70,12 @@ def test_load_done_keys_returns_exact_keys_regardless_of_status(tmp_path):
     store.append(_record(seed=0, status="ok"))
     store.append(_record(seed=1, status="infeasible"))
     store.append(_record(seed=2, status="error"))
-    assert store.load_done_keys() == frozenset(
+    store.append(_record(run_id="other", seed=3, status="ok"))
+    assert store.load_done_keys("r1") == frozenset(
         {
-            ("toy", "CVRP", "pyvrp", 0),
-            ("toy", "CVRP", "pyvrp", 1),
-            ("toy", "CVRP", "pyvrp", 2),
+            ("r1", "toy", "CVRP", "pyvrp", 0),
+            ("r1", "toy", "CVRP", "pyvrp", 1),
+            ("r1", "toy", "CVRP", "pyvrp", 2),
         }
     )
 
@@ -88,4 +90,4 @@ def test_load_done_keys_skips_malformed_seed(tmp_path):
         bad["seed"] = "not-an-int"
         writer.writerow(bad)
     # The good row is present; the malformed one is dropped (so it would be re-run).
-    assert store.load_done_keys() == frozenset({("toy", "CVRP", "pyvrp", 0)})
+    assert store.load_done_keys("r1") == frozenset({("r1", "toy", "CVRP", "pyvrp", 0)})

@@ -72,7 +72,7 @@ SOLVERS: dict[str, "callable[[], Solver]"] = {
     "pvrp_pyvrp": _make_pvrp(_make_pyvrp),
     "pvrp_ortools": _make_pvrp(_make_ortools),
     "pvrp_vroom": _make_pvrp(_make_vroom),
-    # Site-dependent / split-delivery VRP: Tabu Search; base solver seeds the init.
+    # Split Delivery VRP R1: homogeneous wrapper; base solver seeds the init.
     "sdvrp_tabu": _make_sdvrp(None),
     "sdvrp_pyvrp": _make_sdvrp(_make_pyvrp),
     "sdvrp_ortools": _make_sdvrp(_make_ortools),

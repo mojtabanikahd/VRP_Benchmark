@@ -1,12 +1,4 @@
-# SDVRP full benchmark: all 35 Cordeau site-dependent instances (old p01-p23,
-# new pr01-pr12) across the standalone Tabu Search and the three base-seeded
-# wrappers. Flat per-instance budget (no per-node scaling).
-#
-# NOTE ON COST: the Tabu Search is wall-clock bounded, so every cell runs for the
-# full budget unless it converges early (no improvement for 100 iterations). The
-# largest old instances (p13-class) and the new pr06/pr12 are the heavy ones; raise
-# base_s for a deeper search.
-run_id: sdvrp_benchmark
+﻿run_id: sdvrp_r1_benchmark
 seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 time_budget:
   base_s: 10
@@ -16,38 +8,98 @@ solvers: [sdvrp_tabu, sdvrp_pyvrp, sdvrp_ortools, sdvrp_vroom]
 datasets:
   - variant: SDVRP
     instances:
-      - data/instances/SDVRP/old/p01.txt
-      - data/instances/SDVRP/old/p02.txt
-      - data/instances/SDVRP/old/p03.txt
-      - data/instances/SDVRP/old/p04.txt
-      - data/instances/SDVRP/old/p05.txt
-      - data/instances/SDVRP/old/p06.txt
-      - data/instances/SDVRP/old/p07.txt
-      - data/instances/SDVRP/old/p08.txt
-      - data/instances/SDVRP/old/p09.txt
-      - data/instances/SDVRP/old/p10.txt
-      - data/instances/SDVRP/old/p11.txt
-      - data/instances/SDVRP/old/p12.txt
-      - data/instances/SDVRP/old/p13.txt
-      - data/instances/SDVRP/old/p14.txt
-      - data/instances/SDVRP/old/p15.txt
-      - data/instances/SDVRP/old/p16.txt
-      - data/instances/SDVRP/old/p17.txt
-      - data/instances/SDVRP/old/p18.txt
-      - data/instances/SDVRP/old/p19.txt
-      - data/instances/SDVRP/old/p20.txt
-      - data/instances/SDVRP/old/p21.txt
-      - data/instances/SDVRP/old/p22.txt
-      - data/instances/SDVRP/old/p23.txt
-      - data/instances/SDVRP/new/pr01.txt
-      - data/instances/SDVRP/new/pr02.txt
-      - data/instances/SDVRP/new/pr03.txt
-      - data/instances/SDVRP/new/pr04.txt
-      - data/instances/SDVRP/new/pr05.txt
-      - data/instances/SDVRP/new/pr06.txt
-      - data/instances/SDVRP/new/pr07.txt
-      - data/instances/SDVRP/new/pr08.txt
-      - data/instances/SDVRP/new/pr09.txt
-      - data/instances/SDVRP/new/pr10.txt
-      - data/instances/SDVRP/new/pr11.txt
-      - data/instances/SDVRP/new/pr12.txt
+      - data/instances/SDVRP_R1_instances/SET-1/SD1.txt
+      - data/instances/SDVRP_R1_instances/SET-1/SD10.txt
+      - data/instances/SDVRP_R1_instances/SET-1/SD11.txt
+      - data/instances/SDVRP_R1_instances/SET-1/SD12.txt
+      - data/instances/SDVRP_R1_instances/SET-1/SD13.txt
+      - data/instances/SDVRP_R1_instances/SET-1/SD14.txt
+      - data/instances/SDVRP_R1_instances/SET-1/SD15.txt
+      - data/instances/SDVRP_R1_instances/SET-1/SD16.txt
+      - data/instances/SDVRP_R1_instances/SET-1/SD17.txt
+      - data/instances/SDVRP_R1_instances/SET-1/SD18.txt
+      - data/instances/SDVRP_R1_instances/SET-1/SD19.txt
+      - data/instances/SDVRP_R1_instances/SET-1/SD2.txt
+      - data/instances/SDVRP_R1_instances/SET-1/SD20.txt
+      - data/instances/SDVRP_R1_instances/SET-1/SD21.txt
+      - data/instances/SDVRP_R1_instances/SET-1/SD3.txt
+      - data/instances/SDVRP_R1_instances/SET-1/SD4.txt
+      - data/instances/SDVRP_R1_instances/SET-1/SD5.txt
+      - data/instances/SDVRP_R1_instances/SET-1/SD6.txt
+      - data/instances/SDVRP_R1_instances/SET-1/SD7.txt
+      - data/instances/SDVRP_R1_instances/SET-1/SD8.txt
+      - data/instances/SDVRP_R1_instances/SET-1/SD9.txt
+      - data/instances/SDVRP_R1_instances/SET-2/S101D1.sd
+      - data/instances/SDVRP_R1_instances/SET-2/S101D2.sd
+      - data/instances/SDVRP_R1_instances/SET-2/S101D3.sd
+      - data/instances/SDVRP_R1_instances/SET-2/S101D5.sd
+      - data/instances/SDVRP_R1_instances/SET-2/S51D1.sd
+      - data/instances/SDVRP_R1_instances/SET-2/S51D2.sd
+      - data/instances/SDVRP_R1_instances/SET-2/S51D3.sd
+      - data/instances/SDVRP_R1_instances/SET-2/S51D4.sd
+      - data/instances/SDVRP_R1_instances/SET-2/S51D5.sd
+      - data/instances/SDVRP_R1_instances/SET-2/S51D6.sd
+      - data/instances/SDVRP_R1_instances/SET-2/S76D1.sd
+      - data/instances/SDVRP_R1_instances/SET-2/S76D2.sd
+      - data/instances/SDVRP_R1_instances/SET-2/S76D3.sd
+      - data/instances/SDVRP_R1_instances/SET-2/S76D4.sd
+      - data/instances/SDVRP_R1_instances/SET-3/p01_00.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p01_1030.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p01_1050.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p01_1090.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p01_110.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p01_3070.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p01_7090.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p02_00.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p02_1030.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p02_1050.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p02_1090.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p02_110.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p02_3070.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p02_7090.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p03_00.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p03_1030.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p03_1050.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p03_1090.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p03_110.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p03_3070.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p03_7090.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p04_00.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p04_1030.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p04_1050.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p04_1090.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p04_110.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p04_3070.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p04_7090.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p05_00.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p05_1030.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p05_1050.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p05_1090.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p05_110.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p05_3070.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p05_7090.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p10_00.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p10_1030.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p10_1050.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p10_1090.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p10_110.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p10_3070.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p10_7090.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p11_00.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p11_1030.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p11_1050.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p11_1090.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p11_110.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p11_3070.cri
+      - data/instances/SDVRP_R1_instances/SET-3/p11_7090.cri
+      - data/instances/SDVRP_R1_instances/SET-4/eil22.sd
+      - data/instances/SDVRP_R1_instances/SET-4/eil23.sd
+      - data/instances/SDVRP_R1_instances/SET-4/eil30.sd
+      - data/instances/SDVRP_R1_instances/SET-4/eil33.sd
+      - data/instances/SDVRP_R1_instances/SET-4/eil51.sd
+      - data/instances/SDVRP_R1_instances/SET-4/eilA101.sd
+      - data/instances/SDVRP_R1_instances/SET-4/eilA76.sd
+      - data/instances/SDVRP_R1_instances/SET-4/eilB101.sd
+      - data/instances/SDVRP_R1_instances/SET-4/eilB76.sd
+      - data/instances/SDVRP_R1_instances/SET-4/eilC76.sd
+      - data/instances/SDVRP_R1_instances/SET-4/eilD76.sd

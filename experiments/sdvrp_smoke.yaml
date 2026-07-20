@@ -1,16 +1,15 @@
-# SDVRP smoke: the standalone Tabu Search plus one base-seeded wrapper on a small
-# old instance (no duration limit -> CVRP-style seed) and a small new instance
-# (per-type duration limits). VRPSolverEasy is excluded from SDVRP (no native
-# site-dependent / split-delivery model; see CLAUDE.md).
-run_id: sdvrp_smoke
-seeds: [0, 1,]
+﻿run_id: sdvrp_r1_smoke
+seeds: [0, 1]
 time_budget:
   base_s: 10
   per_node_ms: 0
-results_dir: results
+results_dir: results/sdvrp_r1_smoke
+store_detail: true
 solvers: [sdvrp_tabu, sdvrp_pyvrp, sdvrp_ortools, sdvrp_vroom]
 datasets:
   - variant: SDVRP
     instances:
-      - data/instances/SDVRP/old/p01.txt    # t=3 types (cap 60/120/160), n=55
-      - data/instances/SDVRP/new/pr01.txt   # t=4 types, per-type maxdur 100..250, n=48
+      - data/instances/SDVRP_R1_instances/SET-1/SD1.txt
+      - data/instances/SDVRP_R1_instances/SET-2/S51D1.sd
+      - data/instances/SDVRP_R1_instances/SET-3/p01_00.cri
+      - data/instances/SDVRP_R1_instances/SET-4/eil22.sd

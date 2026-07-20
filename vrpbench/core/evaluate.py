@@ -1,4 +1,4 @@
-"""Independent evaluation of VRP solutions.
+﻿"""Independent evaluation of VRP solutions.
 
 The solver's reported objective and feasibility are never trusted blindly:
 ``verify`` recomputes the objective from the instance's authoritative distance
@@ -219,8 +219,8 @@ def _check_vrpmpd_capacity(instance: Instance, solution: Solution) -> list[str]:
 def _check_pvrp(instance: Instance, solution: Solution) -> list[str]:
     """All PVRP constraints, using ``solution.route_days`` to place routes in days.
 
-    Verifies: each route names a valid day; ≤ ``m`` routes per day; per-route load
-    ≤ capacity; (new set) per-route travel+service ≤ ``max_route_duration``; no
+    Verifies: each route names a valid day; â‰¤ ``m`` routes per day; per-route load
+    â‰¤ capacity; (new set) per-route travel+service â‰¤ ``max_route_duration``; no
     depot inside a route; no invalid indices; and, per customer, the set of days it
     is visited equals exactly one of its allowed day-combination bitmasks (which
     subsumes the visit-frequency requirement, since each combination's popcount is
@@ -306,34 +306,11 @@ def _check_pvrp(instance: Instance, solution: Solution) -> list[str]:
 
 
 def _check_sdvrp(instance: Instance, solution: Solution) -> list[str]:
-    """All SDVRP constraints, using ``route_vehicle_types`` and ``route_deliveries``.
-
-    Verifies: the parallel arrays align with ``routes``; no depot inside a route; no
-    invalid indices; each route names a valid vehicle type; at most ``m`` routes per
-    type (the per-type fleet cap); every customer on a route allows that route's type
-    (site-dependency); per-route delivered load ≤ that type's capacity; (when the type
-    has a duration limit) per-route travel+service ≤ the limit; and, per customer, the
-    delivered quantities summed across all routes equal exactly its demand (which
-    subsumes the visit requirement). The objective is total travel distance, summed by
-    ``total_distance`` over all routes — correct for SDVRP as-is.
-    """
+    """All canonical SDVRP R1 constraints using homogeneous split deliveries."""
     violations: list[str] = []
     routes = solution.routes
-    rtypes = solution.route_vehicle_types
     rdeliv = solution.route_deliveries
-    t = int(instance.num_vehicle_types)
-    m = int(instance.vehicles_per_type)
-    caps = instance.vehicle_capacities
-    durs = instance.vehicle_durations
-    allowed = instance.allowed_types
-    svc = instance.service_times
-    assert caps is not None and durs is not None and allowed is not None
 
-    if len(rtypes) != len(routes):
-        violations.append(
-            f"route_vehicle_types length {len(rtypes)} does not match {len(routes)} routes"
-        )
-        return violations
     if len(rdeliv) != len(routes):
         violations.append(
             f"route_deliveries length {len(rdeliv)} does not match {len(routes)} routes"
@@ -342,7 +319,6 @@ def _check_sdvrp(instance: Instance, solution: Solution) -> list[str]:
 
     expected = set(instance.customers)
 
-    # Invalid indices / depot-inside-route.
     seen = [c for r in routes for c in r]
     bad = sorted({c for c in seen if not (0 <= c < instance.num_nodes)})
     if bad:
@@ -350,34 +326,23 @@ def _check_sdvrp(instance: Instance, solution: Solution) -> list[str]:
     if instance.depot in seen:
         violations.append("depot appears inside a route")
 
-    # Vehicle cap per type.
-    routes_per_type = [0] * t
-    for vt in rtypes:
-        if 0 <= vt < t:
-            routes_per_type[vt] += 1
-        else:
-            violations.append(f"route assigned to invalid vehicle type {vt}")
-    for vt in range(t):
-        if routes_per_type[vt] > m:
-            violations.append(
-                f"vehicle type {vt}: {routes_per_type[vt]} routes exceed "
-                f"max vehicles/type {m}"
-            )
-
-    # Per-route: site-dependency, delivered load vs capacity, duration.
     delivered: dict[int, int] = {c: 0 for c in expected}
-    for i, (route, vt, deliv) in enumerate(zip(routes, rtypes, rdeliv)):
+    for i, (route, deliv) in enumerate(zip(routes, rdeliv)):
         if not route:
+            if deliv:
+                violations.append(f"route {i}: empty route has deliveries {sorted(deliv)}")
             continue
-        valid_type = 0 <= vt < t
-        # Delivered quantities must be keyed exactly by this route's customers.
-        if set(deliv) != {c for c in route if 0 <= c < instance.num_nodes}:
+        dupes = sorted({c for c in route if route.count(c) > 1})
+        if dupes:
+            violations.append(f"route {i}: duplicate customers in route: {dupes}")
+        route_customers = {c for c in route if 0 <= c < instance.num_nodes}
+        if set(deliv) != route_customers:
             violations.append(
                 f"route {i}: route_deliveries keys {sorted(deliv)} do not match "
                 f"route customers {sorted(route)}"
             )
         load = 0
-        for c in route:
+        for c in route_customers:
             if not (0 <= c < instance.num_nodes):
                 continue
             qty = int(deliv.get(c, 0))
@@ -386,35 +351,15 @@ def _check_sdvrp(instance: Instance, solution: Solution) -> list[str]:
             load += qty
             if c in delivered:
                 delivered[c] += qty
-            if valid_type and c in expected and vt not in allowed[c]:
-                violations.append(
-                    f"route {i}: customer {c} cannot be served by vehicle type {vt} "
-                    f"(allowed {sorted(allowed[c])})"
-                )
-        if valid_type and load > caps[vt]:
-            violations.append(
-                f"route {i}: load {load} exceeds vehicle type {vt} capacity {caps[vt]}"
-            )
-        if valid_type and durs[vt] > 0:
-            assert svc is not None
-            travel = route_distance(instance, route, instance.depot)
-            service = float(sum(svc[c] for c in route if 0 <= c < instance.num_nodes))
-            if travel + service > durs[vt] + OBJ_EPS:
-                violations.append(
-                    f"route {i}: duration {travel + service:.3f} exceeds vehicle type "
-                    f"{vt} max route duration {durs[vt]:.3f}"
-                )
+        if load > instance.capacity:
+            violations.append(f"route {i}: load {load} exceeds capacity {instance.capacity}")
 
-    # Per-customer demand coverage: delivered total must equal demand exactly.
     for c in sorted(expected):
         want = int(instance.demands[c])
         got = delivered[c]
         if got != want:
-            violations.append(
-                f"customer {c} receives {got} of required demand {want}"
-            )
+            violations.append(f"customer {c} receives {got} of required demand {want}")
     return violations
-
 
 def gap(objective: float, bks: float | None) -> float | None:
     """Percentage gap to the best-known solution; None if BKS unknown."""

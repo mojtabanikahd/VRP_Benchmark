@@ -172,7 +172,7 @@ def _run_cell(
 
         solution = solver.solve(instance, time_budget_s=budget, seed=seed)
         ev = evaluate.verify(instance, solution)
-        bks_value = bks.lookup(instance.name)
+        bks_value = bks.lookup(instance.name, instance.variant)
         gap = evaluate.gap(ev.objective, bks_value)
 
         return RunRecord(
@@ -187,6 +187,7 @@ def _run_cell(
             solver_objective=solution.objective,
             obj_mismatch=ev.obj_mismatch,
             routes=solution.routes,
+            route_deliveries=solution.route_deliveries,
             error="" if ev.feasible else "; ".join(ev.violations),
         )
     except Exception as exc:  # never abort the batch

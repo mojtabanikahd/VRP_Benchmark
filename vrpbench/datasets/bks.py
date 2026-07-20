@@ -19,19 +19,25 @@ DEFAULT_BKS_PATH = Path("data/bks.csv")
 
 
 class BksTable:
-    """Case-insensitive name -> BKS value lookup."""
+    """Case-insensitive (variant, instance name) -> BKS value lookup."""
 
-    def __init__(self, values: dict[str, float]):
-        self._values = {k.lower(): v for k, v in values.items()}
+    def __init__(self, values: dict[tuple[str, str], float]):
+        self._values = {
+            (variant.upper(), name.lower()): v
+            for (variant, name), v in values.items()
+        }
 
-    def lookup(self, instance_name: str) -> float | None:
-        return self._values.get(instance_name.lower())
+    def lookup(self, instance_name: str, variant: str | None = None) -> float | None:
+        if variant is not None:
+            return self._values.get((variant.upper(), instance_name.lower()))
+        matches = [v for (_, name), v in self._values.items() if name == instance_name.lower()]
+        return matches[0] if len(matches) == 1 else None
 
     def __len__(self) -> int:
         return len(self._values)
 
     def __contains__(self, instance_name: str) -> bool:
-        return instance_name.lower() in self._values
+        return any(name == instance_name.lower() for _, name in self._values)
 
 
 def load_bks(path: str | os.PathLike = DEFAULT_BKS_PATH) -> BksTable:
@@ -40,13 +46,14 @@ def load_bks(path: str | os.PathLike = DEFAULT_BKS_PATH) -> BksTable:
     if not p.exists():
         return BksTable({})
 
-    values: dict[str, float] = {}
+    values: dict[tuple[str, str], float] = {}
     with p.open(newline="", encoding="utf-8") as fh:
         reader = csv.DictReader(fh)
         for row in reader:
             name = (row.get("instance_name") or "").strip()
+            variant = (row.get("variant") or "").strip()
             raw = (row.get("bks_value") or "").strip()
-            if not name or not raw:
+            if not name or not variant or not raw:
                 continue
-            values[name] = float(raw)
+            values[(variant, name)] = float(raw)
     return BksTable(values)

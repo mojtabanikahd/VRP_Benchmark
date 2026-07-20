@@ -11,11 +11,10 @@ where the depot is always ``instance.depot``.
 For PVRP, ``route_days`` runs parallel to ``routes`` and names the 0-indexed day
 each route is operated on. It is empty for the non-periodic variants.
 
-For SDVRP, ``route_vehicle_types`` runs parallel to ``routes`` and names the
-0-indexed vehicle type each route uses, while ``route_deliveries`` gives, per
-route, the quantity delivered to each customer on it. A customer whose demand is
-split appears in several ``routes`` entries, with its per-route quantities summing
-to the full demand. Both are empty for the non-split variants.
+For SDVRP, ``route_deliveries`` gives, per route, the quantity delivered to each
+customer on it. A customer whose demand is split appears in several ``routes``
+entries, with its per-route quantities summing to the full demand. It is empty
+for the non-split variants.
 """
 
 from __future__ import annotations
@@ -34,7 +33,7 @@ class Solution:
     route_depots: list[int] = field(default_factory=list)
     # PVRP only: 0-indexed day per route (parallel to ``routes``); empty otherwise.
     route_days: list[int] = field(default_factory=list)
-    # SDVRP only: 0-indexed vehicle type per route (parallel to ``routes``); empty otherwise.
+    # Legacy SDVRP detail field; canonical SDVRP R1 solvers do not populate it.
     route_vehicle_types: list[int] = field(default_factory=list)
     # SDVRP only: per-route {customer index -> delivered quantity}; empty otherwise.
     route_deliveries: list[dict[int, int]] = field(default_factory=list)

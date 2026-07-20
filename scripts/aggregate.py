@@ -47,7 +47,7 @@ VARIANT_SPEC = {
     },
     "SDVRP": {
         "solvers": ["sdvrp_tabu", "sdvrp_pyvrp", "sdvrp_ortools", "sdvrp_vroom"],
-        "metrics": ["obj", "time", "nveh", "success"],
+        "metrics": ["obj", "gap", "time", "nveh", "success"],
         "inst_cols": ["Instance", "Set"],
     },
     "PVRP": {
@@ -64,9 +64,9 @@ VRPMPD_SUFFIX_ORDER = ["H", "Q", "T", "X", "Y"]
 
 
 def clean_name(name: str) -> str:
-    """Strip any leading path and a trailing .vrp/.txt/.vrpmpd extension."""
+    """Strip any leading path and a trailing known instance extension."""
     base = os.path.basename(str(name))
-    return re.sub(r"\.(vrp|txt|vrpmpd)$", "", base)
+    return re.sub(r"\.(vrp|txt|vrpmpd|sd|cri)$", "", base)
 
 
 def _mean(series, ndigits: int):
@@ -104,6 +104,21 @@ def _features_pset(name: str):
     num = int(m.group(1)) if m else 0
     cols = {"Instance": name, "Set": "old" if is_old else "new"}
     return cols, (0 if is_old else 1, num, name)
+
+
+def _features_sdvrp(name: str):
+    if re.match(r"^SD\d+$", name):
+        set_name, rank = "SET-1", 1
+    elif re.match(r"^S\d+D\d+$", name):
+        set_name, rank = "SET-2", 2
+    elif re.match(r"^p\d+_", name):
+        set_name, rank = "SET-3", 3
+    elif name.startswith("eil"):
+        set_name, rank = "SET-4", 4
+    else:
+        set_name, rank = "R1", 9
+    nums = tuple(int(x) for x in re.findall(r"\d+", name))
+    return {"Instance": name, "Set": set_name}, (rank, nums, name)
 
 
 def _read_mdvrp_params(name: str, is_old: bool):
@@ -158,7 +173,7 @@ FEATURE_FUNCS = {
     "VRPTW": _features_vrptw,
     "MDVRP": _features_mdvrp,
     "VRPMPD": _features_vrpmpd,
-    "SDVRP": _features_pset,
+    "SDVRP": _features_sdvrp,
     "PVRP": _features_pset,
 }
 
