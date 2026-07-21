@@ -1,10 +1,10 @@
-﻿run_id: sdvrp_r1_benchmark
+﻿run_id: sdvrp_r1_aasa_alkaid_benchmark_v1
 seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 time_budget:
   base_s: 10
   per_node_ms: 0
 results_dir: results
-solvers: [sdvrp_tabu, sdvrp_pyvrp, sdvrp_ortools, sdvrp_vroom]
+solvers: [aasa_pyvrp, aasa_vroom, alkaid_sdvrp]
 datasets:
   - variant: SDVRP
     instances:

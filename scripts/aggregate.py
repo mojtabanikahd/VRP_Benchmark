@@ -46,7 +46,7 @@ VARIANT_SPEC = {
         "inst_cols": ["Instance", "Base", "Cap. Variant"],
     },
     "SDVRP": {
-        "solvers": ["sdvrp_tabu", "sdvrp_pyvrp", "sdvrp_ortools", "sdvrp_vroom"],
+        "solvers": ["aasa_pyvrp", "aasa_vroom", "alkaid_sdvrp"],
         "metrics": ["obj", "gap", "time", "nveh", "success"],
         "inst_cols": ["Instance", "Set"],
     },

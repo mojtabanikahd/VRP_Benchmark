@@ -9,10 +9,9 @@ Bundled solvers: **PyVRP** (CVRP + VRPTW + MDVRP + VRPMPD), **OR-Tools** (CVRP +
 MDVRP + VRPMPD), **VROOM** (CVRP + VRPTW + MDVRP + VRPMPD), **VRPSolverEasy** (CVRP +
 VRPTW â€” exact BCP via BaPCod; MDVRP, VRPMPD, PVRP, and SDVRP not supported), **PVRPSolver**
 wrapping any of the three heuristic solvers (`pvrp_pyvrp`, `pvrp_ortools`, `pvrp_vroom`)
-for PVRP via ALNS over day-combination assignments, and **SDVRPSolver**, a self-contained
-Tabu Search (`sdvrp_tabu`, plus `sdvrp_pyvrp` / `sdvrp_ortools` / `sdvrp_vroom` which seed
-the initial solution from a base solver). A future custom solver plugs in as one adapter
-file + one registry entry.
+for PVRP via ALNS over day-combination assignments, plus **AASA-PyVRP**,
+**AASA-VROOM**, and the externally provisioned **Alkaid-SDVRP** executable for
+SDVRP. A future custom solver plugs in as one adapter file + one registry entry.
 
 ## Install
 
@@ -46,7 +45,7 @@ entry-point.
 # PVRP smoke â€” three PVRP wrappers on one old (no duration limit) + one new (duration limit) instance
 .venv\Scripts\python.exe -m vrpbench.cli --config experiments/pvrp_smoke.yaml
 
-# SDVRP smoke - all four SDVRP wrappers on representative R1 instances
+# SDVRP smoke - two AASA reductions and native Alkaid on representative R1 instances
 .venv\Scripts\python.exe -m vrpbench.cli --config experiments/sdvrp_smoke.yaml
 
 # Full benchmark â€” all four solvers on the standard CVRP X-set + Solomon VRPTW set
@@ -205,8 +204,8 @@ datasets:
 > or R1-shaped `.txt` files, and explicit `variant: SDVRP` is also accepted.
 > `vrpsolvereasy` cannot be listed under an MDVRP, VRPMPD, PVRP, or SDVRP group (config
 > validation rejects it with a clear error). PVRP solvers must use the `pvrp_*` names
-> (`pvrp_pyvrp`, `pvrp_ortools`, `pvrp_vroom`) and SDVRP solvers the `sdvrp_*` names
-> (`sdvrp_tabu`, `sdvrp_pyvrp`, `sdvrp_ortools`, `sdvrp_vroom`); the plain
+> (`pvrp_pyvrp`, `pvrp_ortools`, `pvrp_vroom`) and SDVRP solvers must use
+> `aasa_pyvrp`, `aasa_vroom`, or `alkaid_sdvrp`; the plain
 > `pyvrp`/`ortools`/`vroom` names do not support PVRP or SDVRP.
 >
 > **VRPMPD files use the unique `.vrpmpd` extension** â€” the variant is inferred automatically
@@ -218,7 +217,7 @@ datasets:
 |---|---|
 | `vrpbench/core` | `Instance`, `Solution`, independent `evaluate` (objective recompute, feasibility, gap) |
 | `vrpbench/datasets` | `loader` (CVRPLIB `.vrp` + Solomon/GH `.txt` via `vrplib`, Cordeau MDVRP/PVRP `.txt`, DIMACS SDVRP R1 `.txt`/`.sd`/`.cri`, Salhi-Nagy `.vrpmpd`), curated `bks` table |
-| `vrpbench/solvers` | `Solver` protocol + `pyvrp` / `ortools` / `vroom` / `vrpsolvereasy` adapters + `pvrp_solver` ALNS wrapper + `sdvrp_solver` Tabu Search + `SOLVERS` registry |
+| `vrpbench/solvers` | `Solver` protocol + `pyvrp` / `ortools` / `vroom` / `vrpsolvereasy` adapters + `pvrp_solver` ALNS wrapper + shared `aasa_solver` + external `alkaid_solver` + `SOLVERS` registry |
 | `vrpbench/runner` | YAML `config` + execution loop (parallel `--threads`, resume / `--force`) |
 | `vrpbench/results` | incremental CSV store (+ optional per-run JSON) |
 
@@ -233,10 +232,9 @@ datasets:
 | `pvrp_pyvrp` | ALNS wrapper (PyVRP inner) | âœ— | âœ— | âœ— | âœ— | âœ“ | âœ— | |
 | `pvrp_ortools` | ALNS wrapper (OR-Tools inner) | âœ— | âœ— | âœ— | âœ— | âœ“ | âœ— | |
 | `pvrp_vroom` | ALNS wrapper (VROOM inner) | âœ— | âœ— | âœ— | âœ— | âœ“ | âœ— | |
-| `sdvrp_tabu` | Tabu Search (greedy init) | âœ— | âœ— | âœ— | âœ— | âœ— | âœ“ | |
-| `sdvrp_pyvrp` | Tabu Search (PyVRP-seeded init) | âœ— | âœ— | âœ— | âœ— | âœ— | âœ“ | Base solver seeds the initial solution only |
-| `sdvrp_ortools` | Tabu Search (OR-Tools-seeded init) | âœ— | âœ— | âœ— | âœ— | âœ— | âœ“ | Base solver seeds the initial solution only |
-| `sdvrp_vroom` | Tabu Search (VROOM-seeded init) | âœ— | âœ— | âœ— | âœ— | âœ— | âœ“ | Base solver seeds the initial solution only |
+| `aasa_pyvrp` | AASA reduction + PyVRP | âœ— | âœ— | âœ— | âœ— | âœ— | âœ“ | Fixed `p=2`, two-level demand discretisation |
+| `aasa_vroom` | AASA reduction + VROOM | âœ— | âœ— | âœ— | âœ— | âœ— | âœ“ | VROOM currently ignores `seed` |
+| `alkaid_sdvrp` | Native Alkaid-SDVRP ILS/RVND | âœ— | âœ— | âœ— | âœ— | âœ— | âœ“ | Requires external v1.1 executable; see `ALKAID_SETUP.md` |
 
 All three heuristic solvers handle multiple depots **natively** (PyVRP per-depot vehicle
 types, OR-Tools per-vehicle `starts`/`ends`, VROOM per-vehicle `start`/`end`). MDVRP uses
@@ -257,7 +255,17 @@ per-route duration limit) sub-instance with a hard fleet cap of `m` vehicles/day
 reported objective is the total travel distance summed across all `t` days; day-route
 solutions are re-evaluated against the authoritative distance matrix so `obj_mismatch â‰ˆ 0`.
 
-For **SDVRP**, the harness targets the DIMACS R1 Split Delivery VRP benchmark: homogeneous capacity, explicit split-delivery quantities, no site-dependent vehicle types, no route-duration fields, and no hard fleet cap in the instance data. `sdvrp_tabu` builds a deterministic greedy packed solution, while `sdvrp_pyvrp` / `sdvrp_ortools` / `sdvrp_vroom` may seed the customer order from a relaxed homogeneous CVRP solved by the base solver. Final SDVRP solutions always carry `route_deliveries`, and objectives are recomputed from the authoritative integer-rounded distance matrix so `obj_mismatch` is near zero.
+For **SDVRP**, the harness targets the DIMACS R1 Split Delivery VRP benchmark:
+homogeneous capacity, explicit split-delivery quantities, no site-dependent vehicle
+types, no route-duration fields, and no hard fleet cap. `aasa_pyvrp` and
+`aasa_vroom` apply the A Priori Adaptive Splitting Algorithm with fixed `p=2` and
+two distance levels, then solve the resulting colocated-fragment CVRP through the
+existing adapters. This restricts delivered quantities to generated fragments and is
+therefore an approximation of the full split space; these combinations are valid uses
+of AASA's generic CVRP transformation, not reproductions of the paper's VRPH results.
+`alkaid_sdvrp` passes the original R1 file directly to native Alkaid without AASA.
+All decoded solutions carry `route_deliveries`, and objectives are recomputed from the
+authoritative integer-rounded distance matrix so `obj_mismatch` is near zero.
 ## Datasets & BKS
 
 Place instance files under `data/instances/`:

@@ -1,11 +1,11 @@
-﻿run_id: sdvrp_r1_smoke
+﻿run_id: sdvrp_r1_aasa_alkaid_smoke_v1
 seeds: [0, 1]
 time_budget:
   base_s: 10
   per_node_ms: 0
-results_dir: results/sdvrp_r1_smoke
+results_dir: results/sdvrp_r1_aasa_alkaid_smoke_v1
 store_detail: true
-solvers: [sdvrp_tabu, sdvrp_pyvrp, sdvrp_ortools, sdvrp_vroom]
+solvers: [aasa_pyvrp, aasa_vroom, alkaid_sdvrp]
 datasets:
   - variant: SDVRP
     instances:

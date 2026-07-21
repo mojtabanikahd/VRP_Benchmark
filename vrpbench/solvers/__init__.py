@@ -48,19 +48,21 @@ def _make_pvrp(base_factory) -> "callable[[], Solver]":
     return factory
 
 
-def _make_sdvrp(base_factory=None) -> "callable[[], Solver]":
-    """Build a factory for the SDVRP Tabu Search.
-
-    ``base_factory is None`` → standalone ``sdvrp_tabu`` (greedy-NN init). Otherwise the
-    wrapped base solver provides the initial solution only.
-    """
+def _make_aasa(base_factory) -> "callable[[], Solver]":
+    """Build an AASA SDVRP wrapper around a CVRP solver factory."""
 
     def factory() -> Solver:
-        from vrpbench.solvers.sdvrp_solver import SDVRPSolver
+        from vrpbench.solvers.aasa_solver import AASASolver
 
-        return SDVRPSolver(base_factory() if base_factory is not None else None)
+        return AASASolver(base_factory())
 
     return factory
+
+
+def _make_alkaid() -> Solver:
+    from vrpbench.solvers.alkaid_solver import AlkaidSDVRPSolver
+
+    return AlkaidSDVRPSolver()
 
 
 SOLVERS: dict[str, "callable[[], Solver]"] = {
@@ -72,11 +74,10 @@ SOLVERS: dict[str, "callable[[], Solver]"] = {
     "pvrp_pyvrp": _make_pvrp(_make_pyvrp),
     "pvrp_ortools": _make_pvrp(_make_ortools),
     "pvrp_vroom": _make_pvrp(_make_vroom),
-    # Split Delivery VRP R1: homogeneous wrapper; base solver seeds the init.
-    "sdvrp_tabu": _make_sdvrp(None),
-    "sdvrp_pyvrp": _make_sdvrp(_make_pyvrp),
-    "sdvrp_ortools": _make_sdvrp(_make_ortools),
-    "sdvrp_vroom": _make_sdvrp(_make_vroom),
+    # Split Delivery VRP R1: AASA reductions and native Alkaid search.
+    "aasa_pyvrp": _make_aasa(_make_pyvrp),
+    "aasa_vroom": _make_aasa(_make_vroom),
+    "alkaid_sdvrp": _make_alkaid,
 }
 
 

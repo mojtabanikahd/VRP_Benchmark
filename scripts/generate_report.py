@@ -60,11 +60,11 @@ SOLVER_PALETTE = {
 # Map each solver (and its variant-prefixed cousins) to a colour family so a solver
 # keeps the same hue across every table.
 SOLVER_FAMILY = {
-    "pyvrp": "blue", "sdvrp_pyvrp": "blue", "pvrp_pyvrp": "blue",
-    "ortools": "orange", "sdvrp_ortools": "orange", "pvrp_ortools": "orange",
-    "vroom": "green", "sdvrp_vroom": "green", "pvrp_vroom": "green",
+    "pyvrp": "blue", "aasa_pyvrp": "blue", "pvrp_pyvrp": "blue",
+    "ortools": "orange", "pvrp_ortools": "orange",
+    "vroom": "green", "aasa_vroom": "green", "pvrp_vroom": "green",
     "vrpsolvereasy": "purple",
-    "sdvrp_tabu": "red",
+    "alkaid_sdvrp": "red",
 }
 
 # Fallback order for any unmapped solver key (by group position).
@@ -75,10 +75,9 @@ SOLVER_LABELS = {
     "ortools": "OR-Tools",
     "vroom": "VROOM",
     "vrpsolvereasy": "VRPSolverEasy",
-    "sdvrp_tabu": "Tabu Search",
-    "sdvrp_pyvrp": "SDVRP-PyVRP",
-    "sdvrp_ortools": "SDVRP-OR-Tools",
-    "sdvrp_vroom": "SDVRP-VROOM",
+    "aasa_pyvrp": "AASA-PyVRP",
+    "aasa_vroom": "AASA-VROOM",
+    "alkaid_sdvrp": "Alkaid-SDVRP",
     "pvrp_pyvrp": "PVRP-PyVRP",
     "pvrp_ortools": "PVRP-OR-Tools",
     "pvrp_vroom": "PVRP-VROOM",
@@ -121,7 +120,7 @@ VARIANT_DESCRIPTIONS = {
     "SDVRP": [
         "DIMACS R1 Split Delivery VRP benchmark; 95 instances across SET-1 through SET-4.",
         "Homogeneous capacity, split deliveries allowed, no site-dependent vehicle types or hard fleet cap.",
-        "Solvers: Tabu Search, SDVRP-PyVRP, SDVRP-OR-Tools, SDVRP-VROOM. Gap (%) relative to official post-challenge best-known solutions.",
+        "Solvers: AASA-PyVRP, AASA-VROOM, Alkaid-SDVRP. Gap (%) relative to official post-challenge best-known solutions.",
     ],
     "PVRP": [
         "Cordeau benchmark; 42 instances. Old set p01-p32, new set pr01-pr10.",
