@@ -13,9 +13,23 @@ Clone or download the pinned v1.1/archive source outside this repository, then
 build its standalone target:
 
 ```powershell
-cmake -S standalone -B build/standalone
+$env:Path = "C:\rtools44\x86_64-w64-mingw32.static.posix\bin;" + $env:Path
+Remove-Item -Recurse -Force build\standalone
+cmake -S standalone -B build/standalone -G Ninja -DCMAKE_CXX_COMPILER=C:/rtools44/x86_64-w64-mingw32.static.posix/bin/g++.exe
 cmake --build build/standalone --config Release
-$env:ALKAID_SDVRP_EXECUTABLE = "C:\path\to\AlkaidSD.exe"
+$env:ALKAID_SDVRP_EXECUTABLE = "F:\Projects\Forced Military Service\Utilities\Alkaid-SDVRP\build\standalone\AlkaidSD.exe"
+```
+
+On Windows, make sure the Rtools 4.4 compiler directory appears before older
+Rtools paths such as `C:\Rtools\gcc-4.6.3\bin`. Alkaid-SDVRP uses C++17 syntax,
+and a stale `build/standalone` CMake cache can keep pointing at the old GCC 4.6.3
+compiler. Recreate the build directory after changing compilers.
+
+If you keep a separate verified build directory, set the executable to that path
+instead:
+
+```powershell
+$env:ALKAID_SDVRP_EXECUTABLE = "F:\Projects\Forced Military Service\Utilities\Alkaid-SDVRP\build\standalone-rtools44\AlkaidSD.exe"
 ```
 
 On a single-configuration Linux generator, the same build is typically:
