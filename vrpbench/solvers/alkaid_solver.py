@@ -39,16 +39,62 @@ def _config_text(input_path: Path, output_path: Path, seed: int, time_limit: flo
             f"random-seed = {int(seed)}",
             f"time-limit = {float(time_limit):.12g}",
             "blink-rate = 0.021",
-            'inter-route-operators = ["Relocate", "Swap<2, 0>", "Swap<2, 1>", "Swap<2, 2>", "Cross", "SwapStar", "SdSwapStar"]',
-            'intra-route-operators = ["Exchange", "OrOpt<1>"]',
-            'acceptance-criterion = "LAHC"',
-            'acceptance-criterion-args = {"length": 83}',
-            'ruin-method = "SISRs"',
-            'ruin-method-args = {"avg_customers": 36, "max_length": 8, "split_rate": 0.740, "preserved_probability": 0.096}',
-            'sorters = {"random": 0.078, "demand": 0.225, "far": 0.942, "close": 0.120}',
+            'inter-operators = ["Relocate", "Swap<2, 0>", "Swap<2, 1>", "Swap<2, 2>", "Cross", "SwapStar", "SdSwapStar"]',
+            'intra-operators = ["Exchange", "OrOpt<1>"]',
+            'acceptance-rule-type = "LAHC"',
+            'acceptance-rule-args = ["length=83"]',
+            'ruin-method-type = "SISRs"',
+            'ruin-method-args = ["average_customers=36", "max_length=8", "split_rate=0.740", "preserved_probability=0.096"]',
+            'sorters = ["random=0.078", "demand=0.225", "far=0.942", "close=0.120"]',
             "",
         ]
     )
+
+
+def _strip_json_trailing_commas(text: str) -> str:
+    """Remove Alkaid's trailing commas without touching quoted string content."""
+    cleaned: list[str] = []
+    in_string = False
+    escaped = False
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if in_string:
+            cleaned.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            index += 1
+            continue
+
+        if char == '"':
+            in_string = True
+            cleaned.append(char)
+        elif char == ",":
+            lookahead = index + 1
+            while lookahead < len(text) and text[lookahead].isspace():
+                lookahead += 1
+            if lookahead < len(text) and text[lookahead] in "]}":
+                index += 1
+                continue
+            cleaned.append(char)
+        else:
+            cleaned.append(char)
+        index += 1
+    return "".join(cleaned)
+
+
+def _loads_alkaid_json(text: str) -> object:
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        normalized = _strip_json_trailing_commas(text)
+        if normalized == text:
+            raise
+        return json.loads(normalized)
 
 
 class AlkaidSDVRPSolver:
@@ -145,7 +191,7 @@ class AlkaidSDVRPSolver:
                 raise SolverError("Alkaid did not create the requested JSON output")
 
             try:
-                payload = json.loads(output_path.read_text(encoding="utf-8"))
+                payload = _loads_alkaid_json(output_path.read_text(encoding="utf-8"))
             except (OSError, UnicodeError, json.JSONDecodeError) as exc:
                 raise SolverError(f"Alkaid produced malformed JSON: {exc}") from exc
 

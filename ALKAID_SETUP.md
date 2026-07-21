@@ -20,6 +20,10 @@ cmake --build build/standalone --config Release
 $env:ALKAID_SDVRP_EXECUTABLE = "F:\Projects\Forced Military Service\Utilities\Alkaid-SDVRP\build\standalone\AlkaidSD.exe"
 ```
 
+Set `ALKAID_SDVRP_EXECUTABLE` in the same PowerShell process that launches
+`python.exe -m vrpbench.cli`; a value set in another terminal window is not
+visible to the benchmark process.
+
 On Windows, make sure the Rtools 4.4 compiler directory appears before older
 Rtools paths such as `C:\Rtools\gcc-4.6.3\bin`. Alkaid-SDVRP uses C++17 syntax,
 and a stale `build/standalone` CMake cache can keep pointing at the old GCC 4.6.3

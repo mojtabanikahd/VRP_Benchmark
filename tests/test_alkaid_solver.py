@@ -60,7 +60,7 @@ values = {}
 for line in config_path.read_text(encoding='utf-8').splitlines():
     if '=' in line and not line.lstrip().startswith('#'):
         key, value = line.split('=', 1)
-        values[key.strip()] = value.strip().strip('"')
+        values[key.strip()] = value.strip()
 Path(os.environ['ALKAID_FAKE_RECORD']).write_text(json.dumps(values), encoding='utf-8')
 routes = [
     [{'customer': 0, 'quantity': 0}, {'customer': 2, 'quantity': 8},
@@ -68,7 +68,7 @@ routes = [
     [{'customer': 0, 'quantity': 0}, {'customer': 1, 'quantity': 5},
      {'customer': 3, 'quantity': 3}, {'customer': 0, 'quantity': 0}],
 ]
-Path(values['output']).write_text(json.dumps(routes), encoding='utf-8')
+Path(values['output'].strip('"')).write_text(json.dumps(routes), encoding='utf-8')
 """,
     )
 
@@ -77,9 +77,24 @@ Path(values['output']).write_text(json.dumps(routes), encoding='utf-8')
     )
 
     observed = json.loads(record.read_text(encoding="utf-8"))
-    assert Path(observed["input"]).resolve() == original_path.resolve()
+    assert Path(observed["input"].strip('"')).resolve() == original_path.resolve()
     assert observed["random-seed"] == "19"
     assert float(observed["time-limit"]) == pytest.approx(2.5)
+    assert observed["inter-operators"] == (
+        '["Relocate", "Swap<2, 0>", "Swap<2, 1>", "Swap<2, 2>", '
+        '"Cross", "SwapStar", "SdSwapStar"]'
+    )
+    assert observed["intra-operators"] == '["Exchange", "OrOpt<1>"]'
+    assert observed["acceptance-rule-type"] == '"LAHC"'
+    assert observed["acceptance-rule-args"] == '["length=83"]'
+    assert observed["ruin-method-type"] == '"SISRs"'
+    assert observed["ruin-method-args"] == (
+        '["average_customers=36", "max_length=8", "split_rate=0.740", '
+        '"preserved_probability=0.096"]'
+    )
+    assert observed["sorters"] == (
+        '["random=0.078", "demand=0.225", "far=0.942", "close=0.120"]'
+    )
     assert solution.routes == [[2, 3], [1, 3]]
     assert solution.route_deliveries == [{2: 8, 3: 12}, {1: 5, 3: 3}]
     evaluation = evaluate.verify(instance, solution)
@@ -114,6 +129,37 @@ def test_alkaid_reports_process_and_output_failures(tmp_path, body, message):
         AlkaidSDVRPSolver([sys.executable, str(script)]).solve(
             instance, time_budget_s=1, seed=0
         )
+
+
+def test_alkaid_accepts_official_trailing_comma_output(tmp_path):
+    instance = _toy(tmp_path / "input.sd")
+    script = _fake_script(
+        tmp_path,
+        """
+import sys
+from pathlib import Path
+cfg = Path(sys.argv[sys.argv.index('--config') + 1])
+values = {}
+for line in cfg.read_text().splitlines():
+    if '=' in line:
+        key, value = line.split('=', 1)
+        values[key.strip()] = value.strip().strip('"')
+Path(values['output']).write_text(
+    '[[{"customer": 0, "quantity": 0}, {"customer": 1, "quantity": 5},'
+    ' {"customer": 3, "quantity": 15}, {"customer": 0, "quantity": 0}],'
+    '[{"customer": 0, "quantity": 0}, {"customer": 2, "quantity": 8},'
+    ' {"customer": 0, "quantity": 0}],]',
+    encoding='utf-8',
+)
+""",
+    )
+
+    solution = AlkaidSDVRPSolver([sys.executable, str(script)]).solve(
+        instance, time_budget_s=1, seed=0
+    )
+
+    assert solution.routes == [[1, 3], [2]]
+    assert solution.route_deliveries == [{1: 5, 3: 15}, {2: 8}]
 
 
 def test_alkaid_rejects_malformed_or_invalid_json(tmp_path):
