@@ -1,0 +1,57 @@
+@import "tailwindcss";
+@import "@fontsource/fraunces/600.css";
+@import "@fontsource/geist/400.css";
+@import "@fontsource/geist/500.css";
+@import "@fontsource/geist/600.css";
+
+@theme {
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --color-paper: #f3efe6;
+  --color-paper-2: #e8e2d6;
+  --color-ink: #14181c;
+  --color-ink-soft: #3e474f;
+  --color-copper: #c4622d;
+  --color-line: rgb(20 24 28 / 12%);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01" on, "cv11" on;
+}
+
+.leaflet-container img {
+  max-width: none;
+  max-height: none;
+}
+
+.fuel-stop {
+  background: transparent;
+  border: none;
+}
+
+.fuel-stop span {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 2px solid #f3efe6;
+  border-radius: 999px;
+  color: #f3efe6;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.fuel-popup .leaflet-popup-content {
+  margin: 12px 14px;
+  width: 280px !important;
+}

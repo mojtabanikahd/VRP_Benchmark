@@ -27,6 +27,7 @@ from vrpbench.solvers.base import (
     mdvrp_vehicles_per_depot,
     vrpmpd_max_vehicles,
 )
+from vrpbench.solvers.road_time import ROAD_DISTANCE_SCALE, scaled_vrptw
 
 _SCALE = {CVRP: 1, VRPTW: 10, MDVRP: 1, VRPMPD: 1}
 
@@ -67,8 +68,13 @@ class PyVRPSolver:
 
         # For VRPMPD the solver objective includes the fixed vehicle cost; report
         # pure travel distance so obj_mismatch vs. the independent re-score is ~0.
+        # Road-backed VRPTW scales kilometers and minutes separately, so the
+        # reported objective is the distance matrix only, divided by the
+        # kilometer scale.
         if instance.variant == VRPMPD:
             reported_obj = result.best.distance() / scale
+        elif instance.variant == VRPTW and instance.travel_times is not None:
+            reported_obj = result.best.distance() / ROAD_DISTANCE_SCALE
         else:
             reported_obj = result.cost() / scale
 
@@ -108,9 +114,9 @@ def _build_data(pyvrp, instance: Instance, scale: int):
         tw = instance.time_windows
         service = instance.service_times
         assert tw is not None and service is not None
-        tw_int = np.rint(tw * scale).astype(np.int64)
-        svc_int = np.rint(service * scale).astype(np.int64)
-        duration_int = dist_int  # travel time == distance for Solomon/GH
+        dist_int, duration_int, _, time_scale = scaled_vrptw(instance, scale)
+        tw_int = np.rint(tw * time_scale).astype(np.int64)
+        svc_int = np.rint(service * time_scale).astype(np.int64)
         depot_obj = pyvrp.Depot(
             x=float(coords[depot, 0]),
             y=float(coords[depot, 1]),

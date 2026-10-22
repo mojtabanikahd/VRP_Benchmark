@@ -1,0 +1,288 @@
+import { useQuery } from "@tanstack/react-query"
+import { Download, Upload } from "lucide-react"
+import { useEffect, useRef, type ReactNode } from "react"
+
+import { Button } from "../components/ui/button"
+import { Input } from "../components/ui/input"
+import { Label } from "../components/ui/label"
+import { Slider } from "../components/ui/slider"
+import { cn } from "../lib/utils"
+import { fetchFuelCatalog } from "./api"
+import { downloadScenario, parseScenarioFile } from "./file"
+import { readImageFile } from "./icons"
+import { fuelIssues } from "./issues"
+import { selectedTanker, useFuel } from "./store"
+import { useFuelSolve } from "./useFuelSolve"
+
+export function FuelRail() {
+  const name = useFuel((state) => state.name)
+  const machineTypes = useFuel((state) => state.machineTypes)
+  const tankerTypes = useFuel((state) => state.tankerTypes)
+  const tankerTypeId = useFuel((state) => state.tankerTypeId)
+  const depot = useFuel((state) => state.depot)
+  const machines = useFuel((state) => state.machines)
+  const solver = useFuel((state) => state.solver)
+  const timeBudgetS = useFuel((state) => state.timeBudgetS)
+  const seed = useFuel((state) => state.seed)
+  const fileError = useFuel((state) => state.fileError)
+  const setName = useFuel((state) => state.setName)
+  const setSolver = useFuel((state) => state.setSolver)
+  const setTimeBudget = useFuel((state) => state.setTimeBudget)
+  const setSeed = useFuel((state) => state.setSeed)
+  const addMachineType = useFuel((state) => state.addMachineType)
+  const updateMachineType = useFuel((state) => state.updateMachineType)
+  const removeMachineType = useFuel((state) => state.removeMachineType)
+  const addTankerType = useFuel((state) => state.addTankerType)
+  const updateTankerType = useFuel((state) => state.updateTankerType)
+  const removeTankerType = useFuel((state) => state.removeTankerType)
+  const selectTankerType = useFuel((state) => state.selectTankerType)
+  const loadFile = useFuel((state) => state.loadFile)
+  const setFileError = useFuel((state) => state.setFileError)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const catalog = useQuery({ queryKey: ["fuel-catalog"], queryFn: fetchFuelCatalog })
+  const { solve, running } = useFuelSolve()
+  const tanker = selectedTanker({ tankerTypes, tankerTypeId })
+  const issues = fuelIssues({ depot, machines, machineTypes, tankerTypes, tankerTypeId, solver })
+
+  const solverNames = catalog.data?.solvers.map((item) => item.name).join("\n") ?? ""
+  useEffect(() => {
+    const names = solverNames.split("\n").filter(Boolean)
+    const first = names[0]
+    if (!first) return
+    if (!solver || !names.includes(solver)) setSolver(first)
+  }, [setSolver, solver, solverNames])
+
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-paper">
+      <header className="border-b border-line px-4 py-4">
+        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-copper">Refueling</p>
+        <h1 className="font-display text-3xl leading-none text-ink">Fueling</h1>
+      </header>
+      <div className="min-h-0 flex-1 space-y-5 overflow-auto px-4 py-4">
+        <section className="space-y-2">
+          <Label htmlFor="fuel-name">Scenario</Label>
+          <Input id="fuel-name" value={name} onChange={(event) => setName(event.target.value)} />
+        </section>
+        <TypeSection
+          title="Machine types"
+          onAdd={addMachineType}
+          addLabel="Add machine type"
+        >
+          {machineTypes.map((item) => (
+            <TypeRow
+              key={item.id}
+              name={item.name}
+              image={item.image}
+              onName={(value) => updateMachineType(item.id, { name: value })}
+              onImage={(image) => updateMachineType(item.id, { image })}
+              onRemove={machineTypes.length > 1 ? () => removeMachineType(item.id) : undefined}
+              onImageError={setFileError}
+            />
+          ))}
+        </TypeSection>
+        <TypeSection title="Tanker types" onAdd={addTankerType} addLabel="Add tanker type">
+          {tankerTypes.map((item) => (
+            <TypeRow
+              key={item.id}
+              name={item.name}
+              image={item.image}
+              active={item.id === tankerTypeId}
+              capacityL={item.capacityL}
+              onSelect={() => selectTankerType(item.id)}
+              onName={(value) => updateTankerType(item.id, { name: value })}
+              onCapacity={(value) => updateTankerType(item.id, { capacityL: Math.max(1, Math.round(value)) })}
+              onImage={(image) => updateTankerType(item.id, { image })}
+              onRemove={tankerTypes.length > 1 ? () => removeTankerType(item.id) : undefined}
+              onImageError={setFileError}
+            />
+          ))}
+          {tanker ? (
+            <p className="text-xs text-ink-soft">Fleet tank capacity {tanker.capacityL} L · {tanker.name}</p>
+          ) : null}
+        </TypeSection>
+        <section className="space-y-2">
+          <Label>Solver</Label>
+          {catalog.isLoading ? <p className="text-sm text-ink-soft">Loading solvers…</p> : null}
+          {catalog.isError ? (
+            <p className="text-sm text-copper">The solver catalog is unavailable. Start the API and refresh.</p>
+          ) : null}
+          <div className="space-y-1.5">
+            {catalog.data?.solvers.map((item) => {
+              const active = item.name === solver
+              return (
+                <button
+                  key={item.name}
+                  type="button"
+                  onClick={() => setSolver(item.name)}
+                  className={cn(
+                    "flex w-full items-baseline justify-between rounded-md border px-2.5 py-2 text-left",
+                    active ? "border-ink bg-ink text-paper" : "border-line bg-paper hover:border-ink/30",
+                  )}
+                >
+                  <span className="text-sm font-medium">{item.name === "pyvrp" ? "PyVRP" : "OR-Tools"}</span>
+                  <span className={cn("text-[11px]", active ? "text-paper/70" : "text-ink-soft")}>{item.version}</span>
+                </button>
+              )
+            })}
+          </div>
+        </section>
+        <section className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label>Time budget</Label>
+            <span className="text-sm tabular-nums text-ink">{timeBudgetS}s</span>
+          </div>
+          <Slider value={timeBudgetS} min={1} max={60} step={1} onValueChange={setTimeBudget} />
+          <Label htmlFor="fuel-seed">Seed</Label>
+          <Input
+            id="fuel-seed"
+            type="number"
+            min={0}
+            value={seed}
+            onChange={(event) => setSeed(Number(event.target.value))}
+          />
+        </section>
+        <section className="grid grid-cols-2 gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() =>
+              downloadScenario({ name, machineTypes, tankerTypes, tankerTypeId, depot, machines })
+            }
+          >
+            <Download className="size-4" />
+            Save
+          </Button>
+          <Button type="button" variant="outline" onClick={() => fileRef.current?.click()}>
+            <Upload className="size-4" />
+            Load
+          </Button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              event.target.value = ""
+              if (!file) return
+              void file
+                .text()
+                .then((text) => parseScenarioFile(JSON.parse(text) as unknown))
+                .then(loadFile)
+                .catch((reason: unknown) => {
+                  setFileError(reason instanceof Error ? reason.message : "Could not load that scenario")
+                })
+            }}
+          />
+        </section>
+        {fileError ? <p className="text-xs leading-relaxed text-copper">{fileError}</p> : null}
+        {issues.length > 0 ? (
+          <ul className="space-y-1 text-xs leading-relaxed text-copper">
+            {issues.map((issue) => (
+              <li key={issue}>{issue}</li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+      <div className="border-t border-line p-4">
+        <Button type="button" size="lg" className="w-full" disabled={issues.length > 0 || running} onClick={() => solve()}>
+          {running ? "Solving" : "Solve"}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function TypeSection({
+  title,
+  addLabel,
+  onAdd,
+  children,
+}: {
+  title: string
+  addLabel: string
+  onAdd: () => void
+  children: ReactNode
+}) {
+  return (
+    <section className="space-y-2">
+      <Label>{title}</Label>
+      <div className="space-y-2">{children}</div>
+      <Button type="button" variant="outline" className="w-full" onClick={onAdd}>
+        {addLabel}
+      </Button>
+    </section>
+  )
+}
+
+function TypeRow({
+  name,
+  image,
+  active,
+  capacityL,
+  onSelect,
+  onName,
+  onCapacity,
+  onImage,
+  onRemove,
+  onImageError,
+}: {
+  name: string
+  image: string
+  active?: boolean
+  capacityL?: number
+  onSelect?: () => void
+  onName: (value: string) => void
+  onCapacity?: (value: number) => void
+  onImage: (image: string) => void
+  onRemove?: () => void
+  onImageError: (message: string) => void
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  return (
+    <div className={cn("space-y-2 rounded-md border p-2", active ? "border-ink" : "border-line")}>
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={() => inputRef.current?.click()} title="Replace image">
+          <img src={image} alt="" className="size-9 rounded-md object-cover" />
+        </button>
+        <Input value={name} onChange={(event) => onName(event.target.value)} />
+        {onSelect ? (
+          <Button type="button" variant={active ? "default" : "outline"} size="sm" onClick={onSelect}>
+            Use
+          </Button>
+        ) : null}
+      </div>
+      {onCapacity ? (
+        <label className="block space-y-1">
+          <Label>Tank capacity (L)</Label>
+          <Input
+            type="number"
+            min={1}
+            step={1}
+            value={capacityL}
+            onChange={(event) => onCapacity(Number(event.target.value))}
+          />
+        </label>
+      ) : null}
+      {onRemove ? (
+        <button type="button" className="text-xs text-ink-soft underline" onClick={onRemove}>
+          Remove type
+        </button>
+      ) : null}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          event.target.value = ""
+          if (!file) return
+          void readImageFile(file).then(onImage).catch((reason: unknown) => {
+            onImageError(reason instanceof Error ? reason.message : "Could not read that image")
+          })
+        }}
+      />
+    </div>
+  )
+}

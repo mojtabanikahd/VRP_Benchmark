@@ -1,0 +1,274 @@
+import { create } from "zustand"
+
+import { MACHINE_ICON, TANKER_ICON } from "./icons"
+import type { FuelDepot, FuelMachine, FuelResult, MachineType, MapMode, TankerType } from "./types"
+
+let sequence = 1
+
+function nextId(prefix: string) {
+  sequence += 1
+  return `${prefix}${sequence}`
+}
+
+function round6(value: number) {
+  return Math.round(value * 1e6) / 1e6
+}
+
+export interface FuelFile {
+  kind: "fueling"
+  version: 1
+  name: string
+  machineTypes: MachineType[]
+  tankerTypes: TankerType[]
+  tankerTypeId: string
+  depot: FuelDepot | null
+  machines: FuelMachine[]
+}
+
+interface FuelState {
+  name: string
+  machineTypes: MachineType[]
+  tankerTypes: TankerType[]
+  tankerTypeId: string
+  depot: FuelDepot | null
+  machines: FuelMachine[]
+  mode: MapMode
+  selectedId: string | null
+  popupId: string | null
+  selectedRoute: number | null
+  solver: string | null
+  timeBudgetS: number
+  seed: number
+  solution: FuelResult | null
+  jobError: string | null
+  fileError: string | null
+  fitToken: number
+  setName: (name: string) => void
+  setMode: (mode: MapMode) => void
+  setSolver: (solver: string | null) => void
+  setTimeBudget: (seconds: number) => void
+  setSeed: (seed: number) => void
+  select: (id: string | null) => void
+  selectRoute: (index: number | null) => void
+  setPopup: (id: string | null) => void
+  placeDepot: (lat: number, lng: number) => void
+  moveDepot: (lat: number, lng: number) => void
+  updateDepot: (patch: Partial<Omit<FuelDepot, "id">>) => void
+  addMachine: (lat: number, lng: number) => void
+  moveMachine: (id: string, lat: number, lng: number) => void
+  updateMachine: (id: string, patch: Partial<Omit<FuelMachine, "id">>) => void
+  removeSelected: () => void
+  addMachineType: () => void
+  updateMachineType: (id: string, patch: Partial<Omit<MachineType, "id">>) => void
+  removeMachineType: (id: string) => void
+  addTankerType: () => void
+  updateTankerType: (id: string, patch: Partial<Omit<TankerType, "id">>) => void
+  removeTankerType: (id: string) => void
+  selectTankerType: (id: string) => void
+  loadFile: (file: FuelFile) => void
+  clearResult: () => void
+  setSolution: (solution: FuelResult) => void
+  setJobError: (message: string) => void
+  setFileError: (message: string | null) => void
+}
+
+const cleared = { solution: null as FuelResult | null, jobError: null as string | null, selectedRoute: null as number | null }
+
+function freshMachineType(): MachineType {
+  return { id: nextId("mt"), name: "Machine", image: MACHINE_ICON }
+}
+
+function freshTankerType(): TankerType {
+  return { id: nextId("tt"), name: "Tanker", capacityL: 1000, image: TANKER_ICON }
+}
+
+const firstMachine = freshMachineType()
+const firstTanker = freshTankerType()
+
+export const useFuel = create<FuelState>((set) => ({
+  name: "Untitled fueling",
+  machineTypes: [firstMachine],
+  tankerTypes: [firstTanker],
+  tankerTypeId: firstTanker.id,
+  depot: null,
+  machines: [],
+  mode: "select",
+  selectedId: null,
+  popupId: null,
+  selectedRoute: null,
+  solver: null,
+  timeBudgetS: 10,
+  seed: 0,
+  solution: null,
+  jobError: null,
+  fileError: null,
+  fitToken: 0,
+  setName: (name) => set({ name }),
+  setMode: (mode) => set({ mode }),
+  setSolver: (solver) => set({ solver }),
+  setTimeBudget: (seconds) => set({ timeBudgetS: seconds }),
+  setSeed: (seed) => set({ seed: Math.max(0, Math.round(seed)) }),
+  select: (id) => set({ selectedId: id, selectedRoute: null }),
+  selectRoute: (index) => set({ selectedRoute: index }),
+  setPopup: (id) => set({ popupId: id }),
+  placeDepot: (lat, lng) =>
+    set((state) => {
+      if (state.depot) return { selectedId: state.depot.id, popupId: state.depot.id }
+      const depot: FuelDepot = {
+        id: nextId("d"),
+        name: "Depot",
+        lat: round6(lat),
+        lng: round6(lng),
+        windowOpenMin: 6 * 60,
+        windowCloseMin: 22 * 60,
+      }
+      return { depot, selectedId: depot.id, popupId: depot.id, fitToken: state.fitToken + 1, ...cleared }
+    }),
+  moveDepot: (lat, lng) =>
+    set((state) => ({
+      depot: state.depot ? { ...state.depot, lat: round6(lat), lng: round6(lng) } : null,
+      ...cleared,
+    })),
+  updateDepot: (patch) =>
+    set((state) => ({
+      depot: state.depot ? { ...state.depot, ...patch, id: state.depot.id } : null,
+      ...cleared,
+    })),
+  addMachine: (lat, lng) =>
+    set((state) => {
+      const typeId = state.machineTypes[0]?.id
+      if (!typeId) return state
+      const machine: FuelMachine = {
+        id: nextId("m"),
+        name: `Machine ${state.machines.length + 1}`,
+        machineTypeId: typeId,
+        lat: round6(lat),
+        lng: round6(lng),
+        fuelL: 100,
+        windowOpenMin: 8 * 60,
+        windowCloseMin: 16 * 60,
+        durationMin: 15,
+      }
+      return {
+        machines: [...state.machines, machine],
+        selectedId: machine.id,
+        popupId: machine.id,
+        ...cleared,
+      }
+    }),
+  moveMachine: (id, lat, lng) =>
+    set((state) => ({
+      machines: state.machines.map((machine) =>
+        machine.id === id ? { ...machine, lat: round6(lat), lng: round6(lng) } : machine,
+      ),
+      ...cleared,
+    })),
+  updateMachine: (id, patch) =>
+    set((state) => ({
+      machines: state.machines.map((machine) => (machine.id === id ? { ...machine, ...patch } : machine)),
+      ...cleared,
+    })),
+  removeSelected: () =>
+    set((state) => {
+      if (!state.selectedId || state.selectedId === state.depot?.id) return state
+      return {
+        machines: state.machines.filter((machine) => machine.id !== state.selectedId),
+        selectedId: null,
+        popupId: null,
+        ...cleared,
+      }
+    }),
+  addMachineType: () =>
+    set((state) => ({ machineTypes: [...state.machineTypes, freshMachineType()] })),
+  updateMachineType: (id, patch) =>
+    set((state) => ({
+      machineTypes: state.machineTypes.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+    })),
+  removeMachineType: (id) =>
+    set((state) => {
+      if (state.machineTypes.length <= 1) return state
+      const machineTypes = state.machineTypes.filter((item) => item.id !== id)
+      const fallback = machineTypes[0].id
+      return {
+        machineTypes,
+        machines: state.machines.map((machine) =>
+          machine.machineTypeId === id ? { ...machine, machineTypeId: fallback } : machine,
+        ),
+      }
+    }),
+  addTankerType: () =>
+    set((state) => ({ tankerTypes: [...state.tankerTypes, freshTankerType()] })),
+  updateTankerType: (id, patch) =>
+    set((state) => ({
+      tankerTypes: state.tankerTypes.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+      ...cleared,
+    })),
+  removeTankerType: (id) =>
+    set((state) => {
+      if (state.tankerTypes.length <= 1) return state
+      const tankerTypes = state.tankerTypes.filter((item) => item.id !== id)
+      const tankerTypeId = state.tankerTypeId === id ? tankerTypes[0].id : state.tankerTypeId
+      return { tankerTypes, tankerTypeId, ...cleared }
+    }),
+  selectTankerType: (id) => set({ tankerTypeId: id, ...cleared }),
+  loadFile: (file) =>
+    set((state) => ({
+      name: file.name,
+      machineTypes: file.machineTypes,
+      tankerTypes: file.tankerTypes,
+      tankerTypeId: file.tankerTypeId,
+      depot: file.depot,
+      machines: file.machines,
+      selectedId: null,
+      popupId: null,
+      fileError: null,
+      fitToken: state.fitToken + 1,
+      ...cleared,
+    })),
+  clearResult: () => set({ solution: null, jobError: null }),
+  setSolution: (solution) => set({ solution, jobError: null, selectedRoute: null }),
+  setJobError: (message) => set({ jobError: message, solution: null }),
+  setFileError: (message) => set({ fileError: message }),
+}))
+
+export function selectedTanker(state: Pick<FuelState, "tankerTypes" | "tankerTypeId">) {
+  return state.tankerTypes.find((item) => item.id === state.tankerTypeId) ?? null
+}
+
+export function fuelPayload(state: FuelState) {
+  const depot = state.depot
+  const tanker = selectedTanker(state)
+  if (!depot || !tanker || !state.solver) throw new Error("The scenario is not ready to solve")
+  return {
+    scenario: {
+      name: state.name.trim() || "fueling",
+      depot: {
+        name: depot.name.trim() || "Depot",
+        lat: depot.lat,
+        lng: depot.lng,
+        window_open_min: depot.windowOpenMin,
+        window_close_min: depot.windowCloseMin,
+      },
+      machines: state.machines.map((machine) => ({
+        name: machine.name.trim() || "Machine",
+        machine_type_id: machine.machineTypeId,
+        lat: machine.lat,
+        lng: machine.lng,
+        fuel_l: Math.round(machine.fuelL),
+        window_open_min: machine.windowOpenMin,
+        window_close_min: machine.windowCloseMin,
+        duration_min: machine.durationMin,
+      })),
+      machine_types: state.machineTypes.map((item) => ({ id: item.id, name: item.name.trim() || "Machine" })),
+      tanker_types: state.tankerTypes.map((item) => ({
+        id: item.id,
+        name: item.name.trim() || "Tanker",
+        capacity_l: Math.max(1, Math.round(item.capacityL)),
+      })),
+      tanker_type_id: state.tankerTypeId,
+    },
+    solver: state.solver,
+    time_budget_s: state.timeBudgetS,
+    seed: state.seed,
+  }
+}

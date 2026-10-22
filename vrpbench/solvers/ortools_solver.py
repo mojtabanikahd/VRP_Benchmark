@@ -26,6 +26,7 @@ from vrpbench.solvers.base import (
     mdvrp_vehicles_per_depot,
     vrpmpd_max_vehicles,
 )
+from vrpbench.solvers.road_time import scaled_vrptw
 
 _SCALE = {CVRP: 1, VRPTW: 10, MDVRP: 1, VRPMPD: 1}
 
@@ -44,6 +45,11 @@ class OrToolsSolver:
         n = instance.num_nodes
         depot = instance.depot
         dist = np.rint(instance.distance * scale).astype(np.int64)
+        travel = dist
+        distance_scale = scale
+        time_scale = scale
+        if instance.travel_times is not None:
+            dist, travel, distance_scale, time_scale = scaled_vrptw(instance, scale)
         demands = instance.demands.astype(np.int64)
 
         if instance.variant == VRPMPD:
@@ -83,7 +89,7 @@ class OrToolsSolver:
 
         if instance.variant == VRPTW:
             _add_time_windows(
-                routing, manager, instance, dist, scale, num_vehicles
+                routing, manager, instance, travel, time_scale, num_vehicles
             )
 
         params = pywrapcp.DefaultRoutingSearchParameters()
@@ -115,7 +121,7 @@ class OrToolsSolver:
         routes, route_depots = _extract_routes(routing, manager, solution, num_vehicles)
         return Solution(
             routes=routes,
-            objective=float(solution.ObjectiveValue()) / scale,
+            objective=float(solution.ObjectiveValue()) / distance_scale,
             feasible=True,  # re-verified independently by the evaluation layer
             runtime_s=runtime_s,
             route_depots=route_depots if instance.variant == MDVRP else [],
@@ -130,19 +136,23 @@ class OrToolsSolver:
             return "unknown"
 
 
-def _add_time_windows(routing, manager, instance, dist, scale, num_vehicles) -> None:
-    """Add a Time dimension: transit = travel time + service time at origin."""
+def _add_time_windows(routing, manager, instance, travel, time_scale, num_vehicles) -> None:
+    """Add a Time dimension: transit = travel time + service time at origin.
+
+    ``travel`` is already scaled. Solomon passes the distance matrix; a fueling
+    scenario passes road minutes.
+    """
     tw = instance.time_windows
     service = instance.service_times
     assert tw is not None and service is not None
-    tw_int = np.rint(tw * scale).astype(np.int64)
-    svc_int = np.rint(service * scale).astype(np.int64)
+    tw_int = np.rint(tw * time_scale).astype(np.int64)
+    svc_int = np.rint(service * time_scale).astype(np.int64)
     depot = instance.depot
 
     def time_cb(from_index: int, to_index: int) -> int:
         i = manager.IndexToNode(from_index)
         j = manager.IndexToNode(to_index)
-        return int(dist[i, j] + svc_int[i])
+        return int(travel[i, j] + svc_int[i])
 
     time_idx = routing.RegisterTransitCallback(time_cb)
     horizon = int(tw_int[:, 1].max() + svc_int.sum() + 1)

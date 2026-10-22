@@ -1,7 +1,9 @@
 """Unified VRP instance representation for CVRP, VRPTW and MDVRP.
 
 A single :class:`Instance` type covers all variants. VRPTW-only fields
-(``time_windows``, ``service_times``) are ``None`` for CVRP/MDVRP. MDVRP carries
+(``time_windows``, ``service_times``) are ``None`` for CVRP/MDVRP. When
+``travel_times`` is set, VRPTW checks windows against that matrix and still scores
+the objective from ``distance``; otherwise travel time equals distance. MDVRP carries
 multiple depots in ``depot_indices`` (CVRP/VRPTW leave it ``None`` and use the
 single ``depot``). The precomputed ``distance`` matrix is the authoritative
 source for every objective/gap computation, which keeps results internally
@@ -51,6 +53,9 @@ class Instance:
     # VRPTW-only (None for CVRP/MDVRP/VRPMPD):
     time_windows: np.ndarray | None = None  # (n, 2): [earliest, latest]
     service_times: np.ndarray | None = None  # (n,)
+    # VRPTW-only. None means travel time equals ``distance`` (Solomon). A fueling
+    # scenario sets this to road minutes while ``distance`` stays road kilometers.
+    travel_times: np.ndarray | None = None  # (n, n) float minutes
     # VRPMPD-only (None for CVRP/VRPTW/MDVRP):
     pickups: np.ndarray | None = None    # (n,) int; depot entry is 0
     deliveries: np.ndarray | None = None  # (n,) int; depot entry is 0
@@ -92,6 +97,13 @@ class Instance:
                 raise ValueError(f"time_windows must be ({n}, 2), got {self.time_windows.shape}")
             if self.service_times.shape != (n,):
                 raise ValueError(f"service_times must be ({n},), got {self.service_times.shape}")
+        if self.travel_times is not None:
+            if self.variant != VRPTW:
+                raise ValueError("travel_times is only valid for VRPTW")
+            if self.travel_times.shape != (n, n):
+                raise ValueError(
+                    f"travel_times must be ({n}, {n}), got {self.travel_times.shape}"
+                )
         if self.variant == MDVRP:
             di = self.depot_indices
             if not di:

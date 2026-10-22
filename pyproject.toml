@@ -22,12 +22,13 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0,<9"]
+web = ["fastapi>=0.115,<1", "uvicorn>=0.32,<1", "python-multipart>=0.0.9,<1"]
 
 [project.scripts]
 vrpbench = "vrpbench.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["vrpbench*"]
+include = ["vrpbench*", "web*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

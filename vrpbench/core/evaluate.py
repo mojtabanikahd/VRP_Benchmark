@@ -143,7 +143,10 @@ def _check_route_depots(instance: Instance, solution: Solution) -> list[str]:
 def _check_time_windows(instance: Instance, solution: Solution) -> list[str]:
     """Simulate each route; waiting before earliest is allowed, lateness is not."""
     violations: list[str] = []
-    d = instance.distance
+    # Road-backed VRPTW stores kilometers on ``distance`` and minutes on
+    # ``travel_times``. Solomon leaves ``travel_times`` empty, so the clock
+    # follows the same matrix as the objective.
+    d = instance.travel_times if instance.travel_times is not None else instance.distance
     depot = instance.depot
     tw = instance.time_windows
     service = instance.service_times
