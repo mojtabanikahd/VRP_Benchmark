@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useRef, type ReactNode, type RefObject } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react"
 import { GeoJSON, MapContainer, Marker, TileLayer, useMap, useMapEvents, ZoomControl } from "react-leaflet"
 import L from "leaflet"
 
 import { ROUTE_COLORS, SELECTED_ROUTE } from "../scenario/types"
+import { AddressSearch } from "./AddressSearch"
 import { copy } from "./copy"
 import { useFuel } from "./store"
 import { formatRange } from "./time"
 
+import type { FuelPlace } from "./api"
 import type { RoadPath } from "./types"
 
 import "leaflet/dist/leaflet.css"
@@ -18,11 +20,19 @@ let hoverTip: L.Tooltip | null = null
 
 const OSM = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 const OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+const STREET_ZOOM = 17
 
 export function FuelMap() {
   const mode = useFuel((state) => state.mode)
   const setMode = useFuel((state) => state.setMode)
   const mapEpoch = useFuel((state) => state.mapEpoch)
+  const [found, setFound] = useState<{ place: FuelPlace; token: number } | null>(null)
+  const searchToken = useRef(0)
+
+  const showPlace = (place: FuelPlace) => {
+    searchToken.current += 1
+    setFound({ place, token: searchToken.current })
+  }
 
   return (
     <div className="relative h-full w-full" dir="ltr">
@@ -33,10 +43,13 @@ export function FuelMap() {
         <MapClicks />
         <FitMarkers />
         <FocusPoint />
+        <ShowFoundArea found={found} />
+        {found ? <SearchPin place={found.place} /> : null}
         <DepotMarker key={`depot-${mapEpoch}`} />
         <MachineMarkers key={`machines-${mapEpoch}`} />
         <RoadLayer />
       </MapContainer>
+      <AddressSearch onPick={showPlace} />
       <div className="absolute right-3 top-3 z-[500] flex gap-1 rounded-md border border-line bg-paper p-1 shadow-sm">
         <Tool active={mode === "depot"} onClick={() => setMode("depot")}>
           {copy.setDepot}
@@ -97,6 +110,36 @@ function MapClicks() {
     },
   })
   return null
+}
+
+function ShowFoundArea({ found }: { found: { place: FuelPlace; token: number } | null }) {
+  const map = useMap()
+  useEffect(() => {
+    if (!found) return
+    const { south, west, north, east } = found.place
+    map.fitBounds(
+      [
+        [south, west],
+        [north, east],
+      ],
+      { padding: [48, 48], maxZoom: STREET_ZOOM },
+    )
+  }, [found, map])
+  return null
+}
+
+function SearchPin({ place }: { place: FuelPlace }) {
+  const icon = useMemo(
+    () =>
+      L.divIcon({
+        className: "fuel-search-pin",
+        html: "<span></span>",
+        iconSize: [14, 14],
+        iconAnchor: [7, 7],
+      }),
+    [],
+  )
+  return <Marker position={[place.lat, place.lng]} icon={icon} interactive={false} keyboard={false} />
 }
 
 function FocusPoint() {

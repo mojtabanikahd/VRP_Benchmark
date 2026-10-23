@@ -437,6 +437,33 @@ def solve_fuel_job(work: FuelWork) -> dict[str, Any]:
     }
 
 
+_NOMINATIM = "https://nominatim.openstreetmap.org/search"
+_MAX_ADDRESS_QUERY = 200
+
+
+def search_places(query: str) -> list[dict[str, Any]]:
+    """Resolve a written address to at most five map places."""
+    text = " ".join(query.split())
+    if not text:
+        raise FuelError("address query must not be empty")
+    if len(text) > _MAX_ADDRESS_QUERY:
+        raise FuelError("address query is too long")
+    url = _NOMINATIM + "?" + urllib.parse.urlencode(
+        {
+            "q": text,
+            "format": "jsonv2",
+            "limit": "5",
+            "accept-language": "fa",
+        }
+    )
+    places: list[dict[str, Any]] = []
+    for item in _get_nominatim(url)[:5]:
+        place = _place_from_nominatim(item)
+        if place is not None:
+            places.append(place)
+    return places
+
+
 def fetch_table(points: list[tuple[float, float]]) -> dict[str, Any]:
     url = (
         f"{osrm_base()}/table/v1/driving/{_coord_path(points)}"
@@ -451,6 +478,70 @@ def fetch_route(points: list[tuple[float, float]]) -> dict[str, Any]:
         "?overview=full&geometries=geojson&steps=true"
     )
     return _get_json(url)
+
+
+def _get_nominatim(url: str) -> list[Any]:
+    request = urllib.request.Request(url, headers={"User-Agent": "vrpbench-fueling"})
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            payload = json.loads(response.read().decode())
+    except urllib.error.HTTPError as exc:
+        raise FuelError(f"address lookup failed: HTTP {exc.code}") from exc
+    except urllib.error.URLError as exc:
+        raise FuelError(f"address lookup failed: {exc.reason}") from exc
+    except json.JSONDecodeError as exc:
+        raise FuelError("address lookup failed: response is not JSON") from exc
+    if not isinstance(payload, list):
+        raise FuelError("address lookup failed: response is not a list")
+    return payload
+
+
+def _place_from_nominatim(item: Any) -> dict[str, Any] | None:
+    if not isinstance(item, dict):
+        return None
+    label = item.get("display_name")
+    if not isinstance(label, str) or not label.strip():
+        return None
+    try:
+        lat = float(item["lat"])
+        lng = float(item["lon"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        return None
+    bounds = _place_bounds(item.get("boundingbox"), lat, lng)
+    if bounds is None:
+        return None
+    south, north, west, east = bounds
+    return {
+        "label": label.strip(),
+        "lat": lat,
+        "lng": lng,
+        "south": south,
+        "north": north,
+        "west": west,
+        "east": east,
+    }
+
+
+def _place_bounds(
+    raw: Any, lat: float, lng: float
+) -> tuple[float, float, float, float] | None:
+    if raw is None:
+        return (lat, lat, lng, lng)
+    if not isinstance(raw, list) or len(raw) != 4:
+        return None
+    try:
+        south, north, west, east = (float(part) for part in raw)
+    except (TypeError, ValueError):
+        return None
+    if south > north:
+        south, north = north, south
+    if west > east:
+        west, east = east, west
+    if not (-90 <= south <= north <= 90 and -180 <= west <= east <= 180):
+        return None
+    return (south, north, west, east)
 
 
 def _get_json(url: str) -> dict[str, Any]:

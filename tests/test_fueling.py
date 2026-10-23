@@ -20,6 +20,7 @@ from web.api.fueling import (
     matrices_from_table,
     route_geometry,
     route_schedule,
+    search_places,
     validate_scenario,
 )
 from web.api.main import app
@@ -265,6 +266,90 @@ def test_fuel_demand_above_tank_capacity_is_rejected():
     )
     assert response.status_code == 422
     assert "tank capacity" in response.text
+
+
+def test_search_places_reads_nominatim_bounds(monkeypatch: pytest.MonkeyPatch):
+    def fake_get(url: str) -> list:
+        assert "format=jsonv2" in url
+        assert "accept-language=fa" in url
+        assert "limit=5" in url
+        return [
+            {
+                "display_name": "آزادی، تهران",
+                "lat": "35.7",
+                "lon": "51.3",
+                "boundingbox": ["35.6", "35.8", "51.2", "51.4"],
+            },
+            {"display_name": "بدون مختصات"},
+            {
+                "display_name": "نقطه",
+                "lat": "32.6",
+                "lon": "51.6",
+            },
+        ]
+
+    monkeypatch.setattr("web.api.fueling._get_nominatim", fake_get)
+    assert search_places("  آزادی   تهران ") == [
+        {
+            "label": "آزادی، تهران",
+            "lat": 35.7,
+            "lng": 51.3,
+            "south": 35.6,
+            "north": 35.8,
+            "west": 51.2,
+            "east": 51.4,
+        },
+        {
+            "label": "نقطه",
+            "lat": 32.6,
+            "lng": 51.6,
+            "south": 32.6,
+            "north": 32.6,
+            "west": 51.6,
+            "east": 51.6,
+        },
+    ]
+
+
+def test_search_places_rejects_a_blank_query():
+    with pytest.raises(FuelError, match="empty"):
+        search_places("   ")
+
+
+def test_geocode_endpoint_returns_places(monkeypatch: pytest.MonkeyPatch):
+    def fake_get(url: str) -> list:
+        assert "q=" in url
+        return [
+            {
+                "display_name": "اصفهان",
+                "lat": "32.65",
+                "lon": "51.67",
+                "boundingbox": ["32.5", "32.8", "51.5", "51.8"],
+            }
+        ]
+
+    monkeypatch.setattr("web.api.fueling._get_nominatim", fake_get)
+    response = client.get("/api/fueling/geocode", params={"q": "اصفهان"})
+    assert response.status_code == 200
+    assert response.json() == {
+        "places": [
+            {
+                "label": "اصفهان",
+                "lat": 32.65,
+                "lng": 51.67,
+                "south": 32.5,
+                "north": 32.8,
+                "west": 51.5,
+                "east": 51.8,
+            }
+        ]
+    }
+
+
+def test_geocode_endpoint_rejects_a_blank_query():
+    response = client.get("/api/fueling/geocode", params={"q": " "})
+    assert response.status_code == 422
+    assert "empty" in response.text
 
 
 def test_fuel_catalog_lists_pyvrp_and_ortools_only():

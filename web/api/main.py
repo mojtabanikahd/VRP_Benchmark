@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from vrpbench.datasets.loader import load
 
 from web.api.catalog import build_catalog
-from web.api.fueling import FuelError, FuelJobRequest, fuel_catalog
+from web.api.fueling import FuelError, FuelJobRequest, fuel_catalog, search_places
 from web.api.jobs import JobRequest, get_runner
 from web.api.scenario import (
     STUDIO_VARIANTS,
@@ -73,6 +73,14 @@ async def upload_instance(
 @app.get("/api/fueling/catalog")
 def read_fuel_catalog() -> dict:
     return fuel_catalog()
+
+
+@app.get("/api/fueling/geocode")
+def geocode_address(q: str) -> dict:
+    try:
+        return {"places": search_places(q)}
+    except FuelError as exc:
+        raise _http_error(exc) from exc
 
 
 @app.post("/api/fueling/jobs")

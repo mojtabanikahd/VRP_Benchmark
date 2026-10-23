@@ -6,6 +6,23 @@ export interface FuelSolverInfo {
   version: string
 }
 
+export interface FuelPlace {
+  label: string
+  lat: number
+  lng: number
+  south: number
+  north: number
+  west: number
+  east: number
+}
+
+export async function searchAddresses(query: string): Promise<FuelPlace[]> {
+  const response = await fetch(`/api/fueling/geocode?q=${encodeURIComponent(query)}`)
+  if (!response.ok) throw new Error(await readError(response))
+  const body = (await response.json()) as { places: FuelPlace[] }
+  return body.places
+}
+
 export async function fetchFuelCatalog(): Promise<{ solvers: FuelSolverInfo[] }> {
   const response = await fetch("/api/fueling/catalog")
   if (!response.ok) throw new Error(await readError(response))

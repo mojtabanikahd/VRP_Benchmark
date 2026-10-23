@@ -11,7 +11,7 @@ The browser talks to a small FastAPI service. That service turns the scenario in
 
 - Python 3.11 or newer, with this repository installed and the `web` extra (FastAPI and Uvicorn).
 - Node.js 20 or newer, for the Vite frontend.
-- A network connection. Studio can solve offline once the solvers are installed. Fueling loads OpenStreetMap tiles and, by default, asks the public OSRM demo server for driving distances and street geometry.
+- A network connection. Studio can solve offline once the solvers are installed. Fueling loads OpenStreetMap tiles, looks up a typed address through the public Nominatim service, and, by default, asks the public OSRM demo server for driving distances and street geometry.
 
 ## Launch
 
@@ -84,11 +84,12 @@ Fueling is one depot and one tanker capacity. Any machine may be served by a tan
 1. Under **انواع ماشین**, name each kind of machine, set the default liters and minutes, and click its thumbnail to replace the image. Images must be 200 KB or smaller. New types start at 100 L and 15 minutes.
 2. Under **تانکر**, set the name, tank capacity in liters, and image. That one model is the fleet.
 3. Choose **PyVRP** or **OR-Tools**, then set **بودجهٔ زمانی** (1–60 seconds) and **بذر**.
-4. On the map, **تعیین انبار**, **گذاشتن ماشین**, and **انتخاب** sit at the top-right. Zoom in and zoom out sit at the top-left.
-5. Choose **تعیین انبار** and click once to place the depot. Drag the marker to move it. The **جزئیات** panel sets the depot name and the shift (**شروع شیفت** / **پایان شیفت**): when tankers may leave and must return.
-6. Choose **گذاشتن ماشین** and click the map for each machine. The new machine starts with its type's default fuel demand and refueling duration, and a window of 08:00–16:00. **جزئیات** sets the name, machine type, fuel demand in liters, refueling window, and refueling duration. **انتخاب**, then click a marker, opens that point in **جزئیات** without a popup. The selected marker grows slightly and gains a copper ring. Rest the pointer on a marker and its name appears beside the icon.
-7. **حذف** in **جزئیات** and on each **فهرست** row deletes the selected depot or machine. **Delete** or **Backspace** does this too, except while typing in a field. Removing either point clears the previous routes.
-8. In **فهرست**, click a depot or machine name to select it, open its details, and move the map to it. If the map is zoomed farther out than street level, it zooms in. **حذف** on that row deletes the point and does not move the map.
+4. On the map, **تعیین انبار**, **گذاشتن ماشین**, and **انتخاب** sit at the top-right. Zoom in and zoom out sit at the top-left. The address box sits along the top, to the right of the zoom control and clear of those three tools.
+5. Type an address and press **جستجو** or Enter. The API asks Nominatim for up to five matches (`GET /api/fueling/geocode`) and the map frames the chosen area, stopping at about street level when the area is only a point. A copper dot marks the match. It is not a depot or a machine, and a click on it still places whichever tool is active. Pick another row under the box to frame that match instead. The search runs once per submit, not on every keystroke. A blank query is refused.
+6. Choose **تعیین انبار** and click once to place the depot. Drag the marker to move it. The **جزئیات** panel sets the depot name and the shift (**شروع شیفت** / **پایان شیفت**): when tankers may leave and must return.
+7. Choose **گذاشتن ماشین** and click the map for each machine. The new machine starts with its type's default fuel demand and refueling duration, and a window of 08:00–16:00. **جزئیات** sets the name, machine type, fuel demand in liters, refueling window, and refueling duration. **انتخاب**, then click a marker, opens that point in **جزئیات** without a popup. The selected marker grows slightly and gains a copper ring. Rest the pointer on a marker and its name appears beside the icon.
+8. **حذف** in **جزئیات** and on each **فهرست** row deletes the selected depot or machine. **Delete** or **Backspace** does this too, except while typing in a field. Removing either point clears the previous routes.
+9. In **فهرست**, click a depot or machine name to select it, open its details, and move the map to it. If the map is zoomed farther out than street level, it zooms in. **حذف** on that row deletes the point and does not move the map.
 
 Solve (**حل**) stays disabled until there is a depot, at least one machine, a tanker, and a solver, every machine's fuel demand is a whole number of liters no larger than the tank, and every refueling duration fits inside that machine's window. The notes under the controls name what is missing.
 
@@ -114,10 +115,14 @@ Moving the depot or a machine clears the previous paths, because they no longer 
 
 A fueling scenario can include at most 99 machines. The public OSRM demo server caps a table at about 100 coordinates (the depot plus the machines) and is not meant for heavy use. To use another OSRM instance, set `OSRM_BASE_URL` in the environment of the API process before starting Uvicorn. The default is `https://router.project-osrm.org`.
 
+Address search calls the public Nominatim service (`https://nominatim.openstreetmap.org/search`) once per search, with a Persian language preference, and returns each match's name, point, and bounding box. It is not meant for bulk lookup.
+
 ## If something fails
 
 - **فهرست حل‌کننده‌ها در دسترس نیست.** The API is not running, or it is not on port 8000. Start Uvicorn and refresh the page.
 - **حل stays disabled.** Read the notes under the controls. They name the missing depot, customer, or machine, a demand that exceeds the tank, or a refueling duration that does not fit in its window.
 - **هیچ برنامه‌ای پنجرهٔ زمانی سوخت‌گیری را رعایت نمی‌کند.** The drive cannot reach a machine inside its window, or cannot finish refueling before that window closes and still return within the depot shift. Widen the window, lengthen the depot shift, or move the point. The map does not draw that plan.
 - **مسیر خیابان پیدا نشد.** OSRM could not return road geometry for a route. The map leaves that route undrawn rather than substituting a straight line. Check the network connection, or point `OSRM_BASE_URL` at a reachable OSRM server.
+- **نتیجه‌ای پیدا نشد.** Nominatim returned no place for that text. Try a more specific address.
+- **جستجوی آدرس برقرار نشد.** The API could not reach Nominatim. Check the network connection.
 - **The map is blank in Fueling.** The browser could not load OpenStreetMap tiles. The page needs access to `tile.openstreetmap.org`.

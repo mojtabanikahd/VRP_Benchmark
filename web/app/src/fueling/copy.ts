@@ -40,6 +40,11 @@ export const copy = {
   setDepot: "تعیین انبار",
   placeMachine: "گذاشتن ماشین",
   select: "انتخاب",
+  addressPlaceholder: "آدرس را بنویسید",
+  searchAddress: "جستجو",
+  searchingAddress: "در حال جستجو…",
+  addressNotFound: "نتیجه‌ای پیدا نشد",
+  addressLookupFailed: "جستجوی آدرس برقرار نشد",
   drivingDistance: "مسافت رانندگی",
   kilometers: "کیلومتر",
   feasible: "شدنی",
@@ -115,6 +120,7 @@ export function persianError(message: string): string {
   if (text.includes("street path")) return "مسیر خیابان پیدا نشد"
   if (/no solution/i.test(text)) return "در این بودجهٔ زمانی جوابی پیدا نشد"
   if (text.includes("OSRM") || text.includes("driving route")) return "ارتباط با مسیریاب برقرار نشد"
+  if (text.includes("address lookup")) return copy.addressLookupFailed
   if (text.includes("not ready")) return copy.notReady
   if (text === "The solver failed") return copy.solverFailed
   return text
