@@ -4,6 +4,8 @@ export interface MachineType {
   id: string
   name: string
   image: string
+  fuelL: number
+  durationMin: number
 }
 
 export interface TankerType {

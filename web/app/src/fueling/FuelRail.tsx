@@ -73,7 +73,11 @@ export function FuelRail() {
               key={item.id}
               name={item.name}
               image={item.image}
+              fuelL={item.fuelL}
+              durationMin={item.durationMin}
               onName={(value) => updateMachineType(item.id, { name: value })}
+              onFuel={(value) => updateMachineType(item.id, { fuelL: wholeLiters(value) })}
+              onDuration={(value) => updateMachineType(item.id, { durationMin: minutes(value) })}
               onImage={(image) => updateMachineType(item.id, { image })}
               onRemove={machineTypes.length > 1 ? () => removeMachineType(item.id) : undefined}
               onImageError={setFileError}
@@ -215,14 +219,28 @@ function TypeSection({
   )
 }
 
+function wholeLiters(value: number) {
+  if (!Number.isFinite(value)) return 1
+  return Math.max(1, Math.round(value))
+}
+
+function minutes(value: number) {
+  if (!Number.isFinite(value)) return 0
+  return Math.max(0, value)
+}
+
 function TypeRow({
   name,
   image,
   active,
   capacityL,
+  fuelL,
+  durationMin,
   onSelect,
   onName,
   onCapacity,
+  onFuel,
+  onDuration,
   onImage,
   onRemove,
   onImageError,
@@ -231,9 +249,13 @@ function TypeRow({
   image: string
   active?: boolean
   capacityL?: number
+  fuelL?: number
+  durationMin?: number
   onSelect?: () => void
   onName: (value: string) => void
   onCapacity?: (value: number) => void
+  onFuel?: (value: number) => void
+  onDuration?: (value: number) => void
   onImage: (image: string) => void
   onRemove?: () => void
   onImageError: (message: string) => void
@@ -261,6 +283,30 @@ function TypeRow({
             step={1}
             value={capacityL}
             onChange={(event) => onCapacity(Number(event.target.value))}
+          />
+        </label>
+      ) : null}
+      {onFuel ? (
+        <label className="block space-y-1">
+          <Label>Default fuel demand (L)</Label>
+          <Input
+            type="number"
+            min={1}
+            step={1}
+            value={fuelL}
+            onChange={(event) => onFuel(Number(event.target.value))}
+          />
+        </label>
+      ) : null}
+      {onDuration ? (
+        <label className="block space-y-1">
+          <Label>Default refueling (min)</Label>
+          <Input
+            type="number"
+            min={0}
+            step={1}
+            value={durationMin}
+            onChange={(event) => onDuration(Number(event.target.value))}
           />
         </label>
       ) : null}

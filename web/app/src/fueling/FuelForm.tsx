@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import { useEffect, useRef, type ReactNode } from "react"
 
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
@@ -6,19 +6,37 @@ import { Label } from "../components/ui/label"
 import { useFuel } from "./store"
 import { clockToMinutes, minutesToClock } from "./time"
 
+let holdMapClicksUntil = 0
+
+export function mapClickHeld() {
+  return performance.now() < holdMapClicksUntil
+}
+
+function holdMapClicks() {
+  holdMapClicksUntil = performance.now() + 300
+}
+
 export function MarkerFields({ id }: { id: string }) {
   const depot = useFuel((state) => state.depot)
   const machine = useFuel((state) => state.machines.find((item) => item.id === id) ?? null)
   const machineTypes = useFuel((state) => state.machineTypes)
   const updateDepot = useFuel((state) => state.updateDepot)
   const updateMachine = useFuel((state) => state.updateMachine)
+  const select = useFuel((state) => state.select)
   const removeSelected = useFuel((state) => state.removeSelected)
+  const removePoint = () => {
+    select(id)
+    removeSelected()
+  }
   const isDepot = depot?.id === id
 
   if (isDepot && depot) {
     return (
       <div className="space-y-3" onMouseDown={(event) => event.stopPropagation()}>
-        <Header eyebrow="Depot" title={depot.name} />
+        <div className="flex items-start justify-between gap-2">
+          <Header eyebrow="Depot" title={depot.name} />
+          <RemovePoint onRemove={removePoint} />
+        </div>
         <Field label="Name">
           <Input value={depot.name} onChange={(event) => updateDepot({ name: event.target.value })} />
         </Field>
@@ -47,9 +65,7 @@ export function MarkerFields({ id }: { id: string }) {
     <div className="space-y-3" onMouseDown={(event) => event.stopPropagation()}>
       <div className="flex items-start justify-between gap-2">
         <Header eyebrow="Machine" title={machine.name} />
-        <Button type="button" variant="outline" size="sm" onClick={() => removeSelected()}>
-          Remove
-        </Button>
+        <RemovePoint onRemove={removePoint} />
       </div>
       <Field label="Name">
         <Input value={machine.name} onChange={(event) => updateMachine(id, { name: event.target.value })} />
@@ -58,7 +74,14 @@ export function MarkerFields({ id }: { id: string }) {
         <select
           className="h-9 w-full rounded-md border border-line bg-paper px-2 text-sm"
           value={machine.machineTypeId}
-          onChange={(event) => updateMachine(id, { machineTypeId: event.target.value })}
+          onChange={(event) => {
+            const machineTypeId = event.target.value
+            const type = machineTypes.find((item) => item.id === machineTypeId)
+            updateMachine(id, {
+              machineTypeId,
+              ...(type ? { fuelL: type.fuelL, durationMin: type.durationMin } : {}),
+            })
+          }}
         >
           {machineTypes.map((item) => (
             <option key={item.id} value={item.id}>
@@ -101,6 +124,42 @@ export function MarkerFields({ id }: { id: string }) {
           onChange={(event) => updateMachine(id, { durationMin: Number(event.target.value) })}
         />
       </Field>
+    </div>
+  )
+}
+
+function RemovePoint({ onRemove }: { onRemove: () => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const node = ref.current
+    if (!node) return
+    const stop = (event: Event) => {
+      event.preventDefault()
+      event.stopPropagation()
+    }
+    const onClick = (event: Event) => {
+      stop(event)
+      holdMapClicks()
+      onRemove()
+    }
+    node.addEventListener("click", onClick, true)
+    node.addEventListener("mousedown", stop, true)
+    node.addEventListener("mouseup", stop, true)
+    node.addEventListener("pointerdown", stop, true)
+    node.addEventListener("pointerup", stop, true)
+    return () => {
+      node.removeEventListener("click", onClick, true)
+      node.removeEventListener("mousedown", stop, true)
+      node.removeEventListener("mouseup", stop, true)
+      node.removeEventListener("pointerdown", stop, true)
+      node.removeEventListener("pointerup", stop, true)
+    }
+  }, [onRemove])
+  return (
+    <div ref={ref}>
+      <Button type="button" variant="outline" size="sm">
+        Remove
+      </Button>
     </div>
   )
 }

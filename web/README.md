@@ -72,7 +72,7 @@ Words used on this screen:
 | On screen | Meaning |
 | --- | --- |
 | Machine | Equipment that needs fuel. This is a VRPTW customer. |
-| Machine type | A name and a marker image. Fuel demand is set on each placed machine, not on the type. |
+| Machine type | A name, a marker image, a default fuel demand in liters, and a default refueling duration in minutes. A new machine copies those two defaults. Changing a machine's type copies that type's defaults again. Editing the type later does not change machines already on the map, and each machine can still use its own fuel demand and duration. |
 | Tanker type | A name, a tank capacity in whole liters, and a marker image. The scenario uses one type, so every tanker has the same capacity. |
 | Depot | The single base. Its marker uses the selected tanker type's image. Tankers are not separate pins. |
 | Fuel demand | Liters that machine must receive. |
@@ -83,18 +83,20 @@ Words used on this screen:
 
 ### Build a scenario
 
-1. Under **Machine types**, name each kind of machine and click its thumbnail to replace the image. Images must be 200 KB or smaller.
+1. Under **Machine types**, name each kind of machine, set **Default fuel demand (L)** and **Default refueling (min)**, and click its thumbnail to replace the image. Images must be 200 KB or smaller. New types start at 100 L and 15 minutes.
 2. Under **Tanker types**, set the name, tank capacity in liters, and image. Press **Use** on the type that should run this scenario. The fleet capacity shown under the list is that tank.
 3. Choose **PyVRP** or **OR-Tools**, then set the time budget and seed.
-4. On the map, choose **Set depot** and click once to place the depot. Drag the marker to move it. The popup sets the depot name and the shift (when tankers may leave and must return).
-5. Choose **Place machine** and click the map for each machine. The popup sets the name, machine type, fuel demand in liters, refueling window, and refueling duration. **Select** edits an existing marker. **Delete** or **Backspace** removes the selected machine. The depot stays until you drag it.
-6. The same fields are in the **Details** panel. **List** jumps to a depot or machine.
+4. On the map, **Set depot**, **Place machine**, and **Select** sit at the top-left. Zoom in and zoom out sit at the top-right.
+5. Choose **Set depot** and click once to place the depot. Drag the marker to move it. The popup, and the **Details** panel, set the depot name and the shift (when tankers may leave and must return).
+6. Choose **Place machine** and click the map for each machine. The new machine starts with its type's default fuel demand and refueling duration. The popup sets the name, machine type, fuel demand in liters, refueling window, and refueling duration. **Select** edits an existing marker without moving the map.
+7. **Remove** on the top-left bar deletes the selected depot or machine. The same action is on the marker popup, the **Details** panel, and each row in **List**. **Delete** or **Backspace** does this too, except while typing in a field. Removing either point clears the previous routes.
+8. In **List**, click a depot or machine name to select it, open its details, and move the map to it. If the map is zoomed farther out than street level, it zooms in. **Remove** on that row deletes the point and does not move the map.
 
 Solve stays disabled until there is a depot, at least one machine, a tanker type, and a solver, and every machine's fuel demand is a whole number of liters no larger than the tank.
 
 ### Save and load
 
-**Save** downloads a `.fueling.json` file. It contains the scenario name, both type catalogs, their images, the selected tanker type, the depot, and every machine. **Load** reads that file back. Solver, time budget, and seed are not stored in the file.
+**Save** downloads a `.fueling.json` file. It contains the scenario name, both type catalogs (including each machine type's default fuel demand and refueling duration), their images, the selected tanker type, the depot, and every machine. **Load** reads that file back. A file saved before those defaults existed loads them as 100 L and 15 minutes. Solver, time budget, and seed are not stored in the file.
 
 ### What a solve shows
 

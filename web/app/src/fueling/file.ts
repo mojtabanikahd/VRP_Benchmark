@@ -8,13 +8,18 @@ const imageSchema = z
   .refine((value) => value.startsWith("data:image/"), "Each type needs an image")
   .refine((value) => value.length <= MAX_IMAGE_BYTES * 2, "An image is larger than 200 KB")
 
-const machineTypeSchema = z.object({
+const typeSchema = z.object({
   id: z.string().trim().min(1),
   name: z.string().trim().min(1),
   image: imageSchema,
 })
 
-const tankerTypeSchema = machineTypeSchema.extend({
+const machineTypeSchema = typeSchema.extend({
+  fuelL: z.number().int().positive().default(100),
+  durationMin: z.number().nonnegative().default(15),
+})
+
+const tankerTypeSchema = typeSchema.extend({
   capacityL: z.number().int().positive(),
 })
 

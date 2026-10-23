@@ -14,7 +14,7 @@ export function FuelApp() {
   const jobError = useFuel((state) => state.jobError)
   const removeSelected = useFuel((state) => state.removeSelected)
   const selectedId = useFuel((state) => state.selectedId)
-  const select = useFuel((state) => state.select)
+  const focusPoint = useFuel((state) => state.focusPoint)
 
   useEffect(() => {
     dockRef.current?.collapse()
@@ -67,7 +67,7 @@ export function FuelApp() {
                 )}
               </TabsContent>
               <TabsContent value="list">
-                <FuelList onSelect={select} />
+                <FuelList onSelect={focusPoint} onRemove={removeSelected} />
               </TabsContent>
             </Tabs>
           </Panel>
@@ -81,15 +81,26 @@ export function FuelApp() {
   )
 }
 
-function FuelList({ onSelect }: { onSelect: (id: string) => void }) {
+function FuelList({ onSelect, onRemove }: { onSelect: (id: string) => void; onRemove: () => void }) {
   const depot = useFuel((state) => state.depot)
   const machines = useFuel((state) => state.machines)
   const selectedId = useFuel((state) => state.selectedId)
+  const select = useFuel((state) => state.select)
+  const removeRow = (id: string) => {
+    select(id)
+    onRemove()
+  }
   return (
     <ul className="space-y-1 p-2">
       {depot ? (
         <li>
-          <ListButton active={selectedId === depot.id} onClick={() => onSelect(depot.id)} label={depot.name} meta="Depot" />
+          <ListButton
+            active={selectedId === depot.id}
+            onClick={() => onSelect(depot.id)}
+            onRemove={() => removeRow(depot.id)}
+            label={depot.name}
+            meta="Depot"
+          />
         </li>
       ) : null}
       {machines.map((machine) => (
@@ -97,6 +108,7 @@ function FuelList({ onSelect }: { onSelect: (id: string) => void }) {
           <ListButton
             active={selectedId === machine.id}
             onClick={() => onSelect(machine.id)}
+            onRemove={() => removeRow(machine.id)}
             label={machine.name}
             meta={`${machine.fuelL} L`}
           />
@@ -109,26 +121,38 @@ function FuelList({ onSelect }: { onSelect: (id: string) => void }) {
 function ListButton({
   active,
   onClick,
+  onRemove,
   label,
   meta,
 }: {
   active: boolean
   onClick: () => void
+  onRemove: () => void
   label: string
   meta: string
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <div
       className={
         active
-          ? "flex w-full items-baseline justify-between rounded-md bg-ink px-2 py-1.5 text-left text-sm text-paper"
-          : "flex w-full items-baseline justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-ink/5"
+          ? "flex w-full items-center gap-2 rounded-md bg-ink px-2 py-1.5 text-sm text-paper"
+          : "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-ink/5"
       }
     >
-      <span>{label}</span>
-      <span className={active ? "text-paper/70" : "text-ink-soft"}>{meta}</span>
-    </button>
+      <button type="button" onClick={onClick} className="flex min-w-0 flex-1 items-baseline justify-between text-left">
+        <span className="truncate">{label}</span>
+        <span className={active ? "text-paper/70" : "text-ink-soft"}>{meta}</span>
+      </button>
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation()
+          onRemove()
+        }}
+        className={active ? "text-xs text-paper/80 underline" : "text-xs text-ink-soft underline"}
+      >
+        Remove
+      </button>
+    </div>
   )
 }

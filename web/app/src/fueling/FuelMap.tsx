@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, type ReactNode } from "react"
-import { GeoJSON, MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from "react-leaflet"
+import { GeoJSON, MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents, ZoomControl } from "react-leaflet"
 import L from "leaflet"
 
 import { ROUTE_COLORS, SELECTED_ROUTE } from "../scenario/types"
-import { MarkerFields } from "./FuelForm"
+import { mapClickHeld, MarkerFields } from "./FuelForm"
 import { useFuel } from "./store"
 
 import type { RoadPath } from "./types"
@@ -18,14 +18,18 @@ const OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenS
 export function FuelMap() {
   const mode = useFuel((state) => state.mode)
   const setMode = useFuel((state) => state.setMode)
+  const selectedId = useFuel((state) => state.selectedId)
+  const removeSelected = useFuel((state) => state.removeSelected)
 
   return (
     <div className="relative h-full w-full">
-      <MapContainer center={[20, 0]} zoom={3} className="absolute inset-0" zoomControl>
+      <MapContainer center={[20, 0]} zoom={3} className="absolute inset-0" zoomControl={false}>
+        <ZoomControl position="topright" />
         <TileLayer attribution={OSM_ATTR} url={OSM} />
         <MapSize />
         <MapClicks />
         <FitMarkers />
+        <FocusPoint />
         <DepotMarker />
         <MachineMarkers />
         <RoadLayer />
@@ -40,6 +44,18 @@ export function FuelMap() {
         <Tool active={mode === "select"} onClick={() => setMode("select")}>
           Select
         </Tool>
+        <button
+          type="button"
+          disabled={!selectedId}
+          onClick={() => removeSelected()}
+          className={
+            selectedId
+              ? "rounded-md px-2.5 py-1.5 text-sm text-ink-soft hover:bg-ink/5"
+              : "rounded-md px-2.5 py-1.5 text-sm text-ink-soft/40"
+          }
+        >
+          Remove
+        </button>
       </div>
     </div>
   )
@@ -82,11 +98,27 @@ function MapClicks() {
   const select = useFuel((state) => state.select)
   useMapEvents({
     click(event) {
+      if (mapClickHeld()) return
+      const target = event.originalEvent?.target
+      if (target instanceof Element && target.closest(".leaflet-popup")) return
       if (mode === "depot") placeDepot(event.latlng.lat, event.latlng.lng)
       else if (mode === "machine") addMachine(event.latlng.lat, event.latlng.lng)
       else select(null)
     },
   })
+  return null
+}
+
+function FocusPoint() {
+  const map = useMap()
+  const focusToken = useFuel((state) => state.focusToken)
+  useEffect(() => {
+    const { focusId, depot, machines } = useFuel.getState()
+    if (!focusId) return
+    const point = depot?.id === focusId ? depot : machines.find((machine) => machine.id === focusId)
+    if (!point) return
+    map.flyTo([point.lat, point.lng], Math.max(map.getZoom(), 15))
+  }, [focusToken, map])
   return null
 }
 
@@ -170,6 +202,7 @@ function PlacedMarker({
 
   useEffect(() => {
     if (popupId === id) markerRef.current?.openPopup()
+    else markerRef.current?.closePopup()
   }, [id, popupId])
 
   return (

@@ -43,12 +43,15 @@ interface FuelState {
   jobError: string | null
   fileError: string | null
   fitToken: number
+  focusId: string | null
+  focusToken: number
   setName: (name: string) => void
   setMode: (mode: MapMode) => void
   setSolver: (solver: string | null) => void
   setTimeBudget: (seconds: number) => void
   setSeed: (seed: number) => void
   select: (id: string | null) => void
+  focusPoint: (id: string) => void
   selectRoute: (index: number | null) => void
   setPopup: (id: string | null) => void
   placeDepot: (lat: number, lng: number) => void
@@ -75,7 +78,7 @@ interface FuelState {
 const cleared = { solution: null as FuelResult | null, jobError: null as string | null, selectedRoute: null as number | null }
 
 function freshMachineType(): MachineType {
-  return { id: nextId("mt"), name: "Machine", image: MACHINE_ICON }
+  return { id: nextId("mt"), name: "Machine", image: MACHINE_ICON, fuelL: 100, durationMin: 15 }
 }
 
 function freshTankerType(): TankerType {
@@ -103,12 +106,22 @@ export const useFuel = create<FuelState>((set) => ({
   jobError: null,
   fileError: null,
   fitToken: 0,
+  focusId: null,
+  focusToken: 0,
   setName: (name) => set({ name }),
   setMode: (mode) => set({ mode }),
   setSolver: (solver) => set({ solver }),
   setTimeBudget: (seconds) => set({ timeBudgetS: seconds }),
   setSeed: (seed) => set({ seed: Math.max(0, Math.round(seed)) }),
   select: (id) => set({ selectedId: id, selectedRoute: null }),
+  focusPoint: (id) =>
+    set((state) => ({
+      selectedId: id,
+      popupId: id,
+      focusId: id,
+      focusToken: state.focusToken + 1,
+      selectedRoute: null,
+    })),
   selectRoute: (index) => set({ selectedRoute: index }),
   setPopup: (id) => set({ popupId: id }),
   placeDepot: (lat, lng) =>
@@ -136,18 +149,18 @@ export const useFuel = create<FuelState>((set) => ({
     })),
   addMachine: (lat, lng) =>
     set((state) => {
-      const typeId = state.machineTypes[0]?.id
-      if (!typeId) return state
+      const type = state.machineTypes[0]
+      if (!type) return state
       const machine: FuelMachine = {
         id: nextId("m"),
         name: `Machine ${state.machines.length + 1}`,
-        machineTypeId: typeId,
+        machineTypeId: type.id,
         lat: round6(lat),
         lng: round6(lng),
-        fuelL: 100,
+        fuelL: type.fuelL,
         windowOpenMin: 8 * 60,
         windowCloseMin: 16 * 60,
-        durationMin: 15,
+        durationMin: type.durationMin,
       }
       return {
         machines: [...state.machines, machine],
@@ -170,7 +183,11 @@ export const useFuel = create<FuelState>((set) => ({
     })),
   removeSelected: () =>
     set((state) => {
-      if (!state.selectedId || state.selectedId === state.depot?.id) return state
+      if (!state.selectedId) return state
+      if (state.selectedId === state.depot?.id) {
+        return { depot: null, selectedId: null, popupId: null, ...cleared }
+      }
+      if (!state.machines.some((machine) => machine.id === state.selectedId)) return state
       return {
         machines: state.machines.filter((machine) => machine.id !== state.selectedId),
         selectedId: null,
