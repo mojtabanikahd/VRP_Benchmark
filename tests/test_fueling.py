@@ -13,7 +13,14 @@ from vrpbench.core import evaluate
 from vrpbench.core.instance import Instance
 from vrpbench.core.solution import Solution
 from vrpbench.solvers.road_time import ROAD_DISTANCE_SCALE, ROAD_TIME_SCALE, scaled_vrptw
-from web.api.fueling import FuelError, FuelScenario, build_fuel_instance, matrices_from_table, route_geometry
+from web.api.fueling import (
+    FuelError,
+    FuelScenario,
+    build_fuel_instance,
+    matrices_from_table,
+    route_geometry,
+    route_schedule,
+)
 from web.api.main import app
 
 client = TestClient(app)
@@ -75,6 +82,31 @@ def _route() -> dict:
             }
         ],
     }
+
+
+def test_route_schedule_records_arrival_before_the_window_wait():
+    scenario = FuelScenario.model_validate(_scenario())
+    travel = np.zeros((2, 2))
+    travel[0, 1] = travel[1, 0] = 10
+    clock = route_schedule(scenario, travel, [[1]])
+    assert clock["depart_min"] == pytest.approx([360])
+    assert clock["arrivals_min"][0] == pytest.approx([370])
+    # The machine window opens at 08:00, so refueling ends at 08:15.
+    assert clock["leaves_min"][0] == pytest.approx([495])
+    assert clock["return_min"] == pytest.approx([505])
+
+
+def test_route_schedule_services_immediately_when_the_window_is_open():
+    payload = _scenario()
+    payload["machines"][0]["window_open_min"] = 360
+    scenario = FuelScenario.model_validate(payload)
+    travel = np.zeros((2, 2))
+    travel[0, 1] = travel[1, 0] = 10
+    clock = route_schedule(scenario, travel, [[1]])
+    assert clock["arrivals_min"][0] == pytest.approx([370])
+    # 06:10 arrival, 15 minutes of service, then 10 minutes back to the depot.
+    assert clock["leaves_min"][0] == pytest.approx([385])
+    assert clock["return_min"] == pytest.approx([395])
 
 
 def test_travel_times_flag_a_late_arrival_distance_would_allow(vrptw_instance: Instance):
@@ -206,6 +238,12 @@ def test_fuel_job_returns_the_osrm_street_path(monkeypatch: pytest.MonkeyPatch):
     assert result["paths"][0]["geometry"] == STREET
     assert result["paths"][0]["streets"] == ["High Street", "Yard Road", "Mill Lane"]
     assert result["paths"][0]["stops"] == result["routes"][0]
+    assert result["depart_min"][0] == pytest.approx(360)
+    assert result["arrivals_min"][0][0] == pytest.approx(370)
+    assert result["leaves_min"][0][0] == pytest.approx(495)
+    assert result["return_min"][0] == pytest.approx(505)
+    assert result["leg_km"][0] == pytest.approx([2.0, 2.0])
+    assert result["route_km"][0] == pytest.approx(4.0)
 
 
 def test_fuel_job_fails_when_the_street_path_is_missing(monkeypatch: pytest.MonkeyPatch):

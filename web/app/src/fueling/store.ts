@@ -10,31 +10,41 @@ function nextId(prefix: string) {
   return `${prefix}${sequence}`
 }
 
+export function rememberIds(ids: Array<string | null | undefined>) {
+  for (const id of ids) {
+    if (!id) continue
+    const match = /(\d+)$/.exec(id)
+    if (!match) continue
+    const value = Number(match[1])
+    if (value > sequence) sequence = value
+  }
+}
+
 function round6(value: number) {
   return Math.round(value * 1e6) / 1e6
 }
 
 export interface FuelFile {
   kind: "fueling"
-  version: 1
+  version: 2
   name: string
   machineTypes: MachineType[]
-  tankerTypes: TankerType[]
-  tankerTypeId: string
+  tanker: TankerType
   depot: FuelDepot | null
   machines: FuelMachine[]
+  solver: string | null
+  timeBudgetS: number | null
+  seed: number | null
 }
 
 interface FuelState {
   name: string
   machineTypes: MachineType[]
-  tankerTypes: TankerType[]
-  tankerTypeId: string
+  tanker: TankerType
   depot: FuelDepot | null
   machines: FuelMachine[]
   mode: MapMode
   selectedId: string | null
-  popupId: string | null
   selectedRoute: number | null
   solver: string | null
   timeBudgetS: number
@@ -45,15 +55,17 @@ interface FuelState {
   fitToken: number
   focusId: string | null
   focusToken: number
+  detailToken: number
+  mapEpoch: number
   setName: (name: string) => void
   setMode: (mode: MapMode) => void
   setSolver: (solver: string | null) => void
   setTimeBudget: (seconds: number) => void
   setSeed: (seed: number) => void
   select: (id: string | null) => void
+  inspect: (id: string) => void
   focusPoint: (id: string) => void
   selectRoute: (index: number | null) => void
-  setPopup: (id: string | null) => void
   placeDepot: (lat: number, lng: number) => void
   moveDepot: (lat: number, lng: number) => void
   updateDepot: (patch: Partial<Omit<FuelDepot, "id">>) => void
@@ -64,10 +76,7 @@ interface FuelState {
   addMachineType: () => void
   updateMachineType: (id: string, patch: Partial<Omit<MachineType, "id">>) => void
   removeMachineType: (id: string) => void
-  addTankerType: () => void
-  updateTankerType: (id: string, patch: Partial<Omit<TankerType, "id">>) => void
-  removeTankerType: (id: string) => void
-  selectTankerType: (id: string) => void
+  updateTanker: (patch: Partial<Omit<TankerType, "id">>) => void
   loadFile: (file: FuelFile) => void
   clearResult: () => void
   setSolution: (solution: FuelResult) => void
@@ -81,23 +90,25 @@ function freshMachineType(): MachineType {
   return { id: nextId("mt"), name: "Machine", image: MACHINE_ICON, fuelL: 100, durationMin: 15 }
 }
 
-function freshTankerType(): TankerType {
+function freshTanker(): TankerType {
   return { id: nextId("tt"), name: "Tanker", capacityL: 1000, image: TANKER_ICON }
 }
 
+function openDetails(state: { detailToken: number }, id: string) {
+  return { selectedId: id, selectedRoute: null as number | null, detailToken: state.detailToken + 1 }
+}
+
 const firstMachine = freshMachineType()
-const firstTanker = freshTankerType()
+const firstTanker = freshTanker()
 
 export const useFuel = create<FuelState>((set) => ({
   name: "Untitled fueling",
   machineTypes: [firstMachine],
-  tankerTypes: [firstTanker],
-  tankerTypeId: firstTanker.id,
+  tanker: firstTanker,
   depot: null,
   machines: [],
   mode: "select",
   selectedId: null,
-  popupId: null,
   selectedRoute: null,
   solver: null,
   timeBudgetS: 10,
@@ -108,25 +119,25 @@ export const useFuel = create<FuelState>((set) => ({
   fitToken: 0,
   focusId: null,
   focusToken: 0,
+  detailToken: 0,
+  mapEpoch: 0,
   setName: (name) => set({ name }),
   setMode: (mode) => set({ mode }),
   setSolver: (solver) => set({ solver }),
   setTimeBudget: (seconds) => set({ timeBudgetS: seconds }),
   setSeed: (seed) => set({ seed: Math.max(0, Math.round(seed)) }),
   select: (id) => set({ selectedId: id, selectedRoute: null }),
+  inspect: (id) => set((state) => openDetails(state, id)),
   focusPoint: (id) =>
     set((state) => ({
-      selectedId: id,
-      popupId: id,
+      ...openDetails(state, id),
       focusId: id,
       focusToken: state.focusToken + 1,
-      selectedRoute: null,
     })),
   selectRoute: (index) => set({ selectedRoute: index }),
-  setPopup: (id) => set({ popupId: id }),
   placeDepot: (lat, lng) =>
     set((state) => {
-      if (state.depot) return { selectedId: state.depot.id, popupId: state.depot.id }
+      if (state.depot) return openDetails(state, state.depot.id)
       const depot: FuelDepot = {
         id: nextId("d"),
         name: "Depot",
@@ -135,7 +146,7 @@ export const useFuel = create<FuelState>((set) => ({
         windowOpenMin: 6 * 60,
         windowCloseMin: 22 * 60,
       }
-      return { depot, selectedId: depot.id, popupId: depot.id, fitToken: state.fitToken + 1, ...cleared }
+      return { depot, ...openDetails(state, depot.id), fitToken: state.fitToken + 1, ...cleared }
     }),
   moveDepot: (lat, lng) =>
     set((state) => ({
@@ -164,8 +175,7 @@ export const useFuel = create<FuelState>((set) => ({
       }
       return {
         machines: [...state.machines, machine],
-        selectedId: machine.id,
-        popupId: machine.id,
+        ...openDetails(state, machine.id),
         ...cleared,
       }
     }),
@@ -185,13 +195,12 @@ export const useFuel = create<FuelState>((set) => ({
     set((state) => {
       if (!state.selectedId) return state
       if (state.selectedId === state.depot?.id) {
-        return { depot: null, selectedId: null, popupId: null, ...cleared }
+        return { depot: null, selectedId: null, ...cleared }
       }
       if (!state.machines.some((machine) => machine.id === state.selectedId)) return state
       return {
         machines: state.machines.filter((machine) => machine.id !== state.selectedId),
         selectedId: null,
-        popupId: null,
         ...cleared,
       }
     }),
@@ -213,48 +222,44 @@ export const useFuel = create<FuelState>((set) => ({
         ),
       }
     }),
-  addTankerType: () =>
-    set((state) => ({ tankerTypes: [...state.tankerTypes, freshTankerType()] })),
-  updateTankerType: (id, patch) =>
+  updateTanker: (patch) =>
     set((state) => ({
-      tankerTypes: state.tankerTypes.map((item) => (item.id === id ? { ...item, ...patch } : item)),
-      ...cleared,
+      tanker: { ...state.tanker, ...patch, id: state.tanker.id },
+      ...(patch.capacityL !== undefined && patch.capacityL !== state.tanker.capacityL ? cleared : {}),
     })),
-  removeTankerType: (id) =>
-    set((state) => {
-      if (state.tankerTypes.length <= 1) return state
-      const tankerTypes = state.tankerTypes.filter((item) => item.id !== id)
-      const tankerTypeId = state.tankerTypeId === id ? tankerTypes[0].id : state.tankerTypeId
-      return { tankerTypes, tankerTypeId, ...cleared }
-    }),
-  selectTankerType: (id) => set({ tankerTypeId: id, ...cleared }),
   loadFile: (file) =>
-    set((state) => ({
-      name: file.name,
-      machineTypes: file.machineTypes,
-      tankerTypes: file.tankerTypes,
-      tankerTypeId: file.tankerTypeId,
-      depot: file.depot,
-      machines: file.machines,
-      selectedId: null,
-      popupId: null,
-      fileError: null,
-      fitToken: state.fitToken + 1,
-      ...cleared,
-    })),
+    set((state) => {
+      rememberIds([
+        file.tanker.id,
+        file.depot?.id,
+        ...file.machineTypes.map((item) => item.id),
+        ...file.machines.map((machine) => machine.id),
+      ])
+      return {
+        name: file.name,
+        machineTypes: file.machineTypes,
+        tanker: file.tanker,
+        depot: file.depot,
+        machines: file.machines,
+        solver: file.solver ?? state.solver,
+        timeBudgetS: file.timeBudgetS ?? state.timeBudgetS,
+        seed: file.seed ?? state.seed,
+        selectedId: null,
+        fileError: null,
+        fitToken: state.fitToken + 1,
+        mapEpoch: state.mapEpoch + 1,
+        ...cleared,
+      }
+    }),
   clearResult: () => set({ solution: null, jobError: null }),
   setSolution: (solution) => set({ solution, jobError: null, selectedRoute: null }),
   setJobError: (message) => set({ jobError: message, solution: null }),
   setFileError: (message) => set({ fileError: message }),
 }))
 
-export function selectedTanker(state: Pick<FuelState, "tankerTypes" | "tankerTypeId">) {
-  return state.tankerTypes.find((item) => item.id === state.tankerTypeId) ?? null
-}
-
 export function fuelPayload(state: FuelState) {
   const depot = state.depot
-  const tanker = selectedTanker(state)
+  const tanker = state.tanker
   if (!depot || !tanker || !state.solver) throw new Error("The scenario is not ready to solve")
   return {
     scenario: {
@@ -277,12 +282,14 @@ export function fuelPayload(state: FuelState) {
         duration_min: machine.durationMin,
       })),
       machine_types: state.machineTypes.map((item) => ({ id: item.id, name: item.name.trim() || "Machine" })),
-      tanker_types: state.tankerTypes.map((item) => ({
-        id: item.id,
-        name: item.name.trim() || "Tanker",
-        capacity_l: Math.max(1, Math.round(item.capacityL)),
-      })),
-      tanker_type_id: state.tankerTypeId,
+      tanker_types: [
+        {
+          id: tanker.id,
+          name: tanker.name.trim() || "Tanker",
+          capacity_l: Math.max(1, Math.round(tanker.capacityL)),
+        },
+      ],
+      tanker_type_id: tanker.id,
     },
     solver: state.solver,
     time_budget_s: state.timeBudgetS,

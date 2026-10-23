@@ -1,8 +1,11 @@
 import { motion } from "motion/react"
 
 import { Badge } from "../components/ui/badge"
+import { cn } from "../lib/utils"
 import { ROUTE_COLORS, SELECTED_ROUTE } from "../scenario/types"
 import { useFuel } from "./store"
+import { formatMinutes, formatRange } from "./time"
+import type { FuelResult } from "./types"
 
 export function FuelDock() {
   const solution = useFuel((state) => state.solution)
@@ -27,6 +30,8 @@ export function FuelDock() {
       </div>
     )
   }
+
+  const depotName = depot?.name ?? "Depot"
 
   return (
     <motion.div
@@ -58,29 +63,45 @@ export function FuelDock() {
             if (route.length === 0) return null
             const path = solution.paths[index]
             const active = selectedRoute === index
-            const names = route.map((node) => machines[node - 1]?.name ?? `Stop ${node}`)
+            const clock = routeClock(solution, index)
+            const legs = solution.leg_km?.[index] ?? []
+            const color = active ? SELECTED_ROUTE : ROUTE_COLORS[index % ROUTE_COLORS.length]
             return (
               <li key={`${index}-${route.join("-")}`}>
                 <button
                   type="button"
                   onClick={() => selectRoute(active ? null : index)}
-                  className="flex w-full flex-col gap-1 rounded-md px-2 py-1.5 text-left text-sm hover:bg-ink/5"
+                  className={cn(
+                    "w-full rounded-md border px-3 py-2 text-left",
+                    active ? "border-ink bg-ink/[0.04]" : "border-line hover:border-ink/30",
+                  )}
                 >
-                  <span className="flex items-center gap-3">
-                    <span
-                      className="inline-block size-2.5 rounded-full"
-                      style={{ background: active ? SELECTED_ROUTE : ROUTE_COLORS[index % ROUTE_COLORS.length] }}
-                    />
-                    <span className="font-medium">Tanker {index + 1}</span>
-                    <span className="truncate text-ink-soft">
-                      {depot?.name ?? "Depot"}
-                      {" → "}
-                      {names.join(" → ")}
+                  <span className="flex items-center justify-between gap-3">
+                    <span className="flex items-center gap-2">
+                      <span className="inline-block size-2.5 rounded-full" style={{ background: color }} />
+                      <span className="text-sm font-medium">Tanker {index + 1}</span>
                     </span>
+                    <span className="text-sm tabular-nums text-ink">{formatKm(solution.route_km?.[index])} km</span>
                   </span>
-                  <span className="pl-5 text-xs text-ink-soft">
+                  <ol className="mt-2 space-y-1 border-l border-line pl-3">
+                    <StopRow name={depotName} when={`depart ${formatMinutes(clock.depart)}`} />
+                    {route.map((node, stop) => (
+                      <li key={`${node}-${stop}`} className="space-y-1">
+                        <p className="text-xs tabular-nums text-ink-soft">{formatKm(legs[stop])} km</p>
+                        <StopRow
+                          name={machines[node - 1]?.name ?? `Stop ${node}`}
+                          when={stopRange(clock.arrivals[stop], clock.leaves[stop])}
+                        />
+                      </li>
+                    ))}
+                    <li className="space-y-1">
+                      <p className="text-xs tabular-nums text-ink-soft">{formatKm(legs[route.length])} km</p>
+                      <StopRow name={depotName} when={`return ${formatMinutes(clock.back)}`} />
+                    </li>
+                  </ol>
+                  <p className="mt-2 text-xs text-ink-soft">
                     {path?.streets.length ? path.streets.join(", ") : "Unnamed roads"}
-                  </span>
+                  </p>
                 </button>
               </li>
             )
@@ -91,7 +112,30 @@ export function FuelDock() {
   )
 }
 
-function formatKm(value: number) {
-  if (!Number.isFinite(value)) return "—"
+function StopRow({ name, when }: { name: string; when: string }) {
+  return (
+    <span className="flex items-baseline justify-between gap-3 text-sm">
+      <span className="truncate">{name}</span>
+      <span className="shrink-0 tabular-nums text-ink-soft">{when}</span>
+    </span>
+  )
+}
+
+function formatKm(value: number | undefined) {
+  if (value === undefined || !Number.isFinite(value)) return "—"
   return value.toFixed(2)
+}
+
+function routeClock(solution: FuelResult, index: number) {
+  return {
+    depart: solution.depart_min?.[index],
+    arrivals: solution.arrivals_min?.[index] ?? [],
+    leaves: solution.leaves_min?.[index] ?? [],
+    back: solution.return_min?.[index],
+  }
+}
+
+function stopRange(arrive: number | undefined, leave: number | undefined) {
+  if (arrive === undefined || leave === undefined || !Number.isFinite(arrive) || !Number.isFinite(leave)) return ""
+  return formatRange(arrive, leave)
 }

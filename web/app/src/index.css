@@ -51,7 +51,50 @@ body {
   font-weight: 600;
 }
 
-.fuel-popup .leaflet-popup-content {
-  margin: 12px 14px;
-  width: 280px !important;
+.fuel-pin {
+  background: transparent;
+  border: none;
+}
+
+.fuel-pin img {
+  display: block;
+  border-radius: 12px;
+}
+
+.fuel-pin img.is-selected {
+  outline: 3px solid #c4622d;
+  outline-offset: 2px;
+  filter: drop-shadow(0 3px 6px rgb(20 24 28 / 40%));
+}
+
+.fuel-arrival {
+  background: transparent;
+  border: none;
+}
+
+.fuel-arrival span {
+  display: inline-block;
+  border-radius: 999px;
+  background: #14181c;
+  color: #f3efe6;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.leaflet-tooltip.fuel-tip {
+  border: none;
+  border-radius: 6px;
+  background: #14181c;
+  color: #f3efe6;
+  padding: 3px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  box-shadow: none;
+}
+
+.leaflet-tooltip.fuel-tip.leaflet-tooltip-right::before {
+  border-right-color: #14181c;
 }

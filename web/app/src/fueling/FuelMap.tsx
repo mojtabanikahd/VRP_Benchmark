@@ -1,16 +1,19 @@
-import { useEffect, useMemo, useRef, type ReactNode } from "react"
-import { GeoJSON, MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents, ZoomControl } from "react-leaflet"
+import { useEffect, useMemo, useRef, type ReactNode, type RefObject } from "react"
+import { GeoJSON, MapContainer, Marker, TileLayer, useMap, useMapEvents, ZoomControl } from "react-leaflet"
 import L from "leaflet"
 
 import { ROUTE_COLORS, SELECTED_ROUTE } from "../scenario/types"
-import { mapClickHeld, MarkerFields } from "./FuelForm"
 import { useFuel } from "./store"
+import { formatRange } from "./time"
 
 import type { RoadPath } from "./types"
 
 import "leaflet/dist/leaflet.css"
 
 const NO_PATHS: RoadPath[] = []
+const HOVER_DELAY_MS = 400
+let hoverTimer = 0
+let hoverTip: L.Tooltip | null = null
 
 const OSM = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 const OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -18,8 +21,7 @@ const OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenS
 export function FuelMap() {
   const mode = useFuel((state) => state.mode)
   const setMode = useFuel((state) => state.setMode)
-  const selectedId = useFuel((state) => state.selectedId)
-  const removeSelected = useFuel((state) => state.removeSelected)
+  const mapEpoch = useFuel((state) => state.mapEpoch)
 
   return (
     <div className="relative h-full w-full">
@@ -30,8 +32,8 @@ export function FuelMap() {
         <MapClicks />
         <FitMarkers />
         <FocusPoint />
-        <DepotMarker />
-        <MachineMarkers />
+        <DepotMarker key={`depot-${mapEpoch}`} />
+        <MachineMarkers key={`machines-${mapEpoch}`} />
         <RoadLayer />
       </MapContainer>
       <div className="absolute left-3 top-3 z-[500] flex gap-1 rounded-md border border-line bg-paper p-1 shadow-sm">
@@ -44,18 +46,6 @@ export function FuelMap() {
         <Tool active={mode === "select"} onClick={() => setMode("select")}>
           Select
         </Tool>
-        <button
-          type="button"
-          disabled={!selectedId}
-          onClick={() => removeSelected()}
-          className={
-            selectedId
-              ? "rounded-md px-2.5 py-1.5 text-sm text-ink-soft hover:bg-ink/5"
-              : "rounded-md px-2.5 py-1.5 text-sm text-ink-soft/40"
-          }
-        >
-          Remove
-        </button>
       </div>
     </div>
   )
@@ -98,9 +88,8 @@ function MapClicks() {
   const select = useFuel((state) => state.select)
   useMapEvents({
     click(event) {
-      if (mapClickHeld()) return
       const target = event.originalEvent?.target
-      if (target instanceof Element && target.closest(".leaflet-popup")) return
+      if (target instanceof Element && target.closest(".leaflet-marker-icon")) return
       if (mode === "depot") placeDepot(event.latlng.lat, event.latlng.lng)
       else if (mode === "machine") addMachine(event.latlng.lat, event.latlng.lng)
       else select(null)
@@ -139,11 +128,9 @@ function FitMarkers() {
 
 function DepotMarker() {
   const depot = useFuel((state) => state.depot)
-  const tankerTypes = useFuel((state) => state.tankerTypes)
-  const tankerTypeId = useFuel((state) => state.tankerTypeId)
-  const image = tankerTypes.find((item) => item.id === tankerTypeId)?.image
+  const image = useFuel((state) => state.tanker.image)
   if (!depot || !image) return null
-  return <PlacedMarker id={depot.id} lat={depot.lat} lng={depot.lng} image={image} kind="depot" />
+  return <PlacedMarker id={depot.id} name={depot.name} lat={depot.lat} lng={depot.lng} image={image} kind="depot" />
 }
 
 function MachineMarkers() {
@@ -152,15 +139,31 @@ function MachineMarkers() {
   const solution = useFuel((state) => state.solution)
   const selectedRoute = useFuel((state) => state.selectedRoute)
   const numbers = useMemo(() => visitNumbers(solution?.routes ?? [], selectedRoute), [solution, selectedRoute])
+  const visits = useMemo(
+    () => visitWindows(solution?.routes ?? [], solution?.arrivals_min ?? [], solution?.leaves_min ?? [], selectedRoute),
+    [solution, selectedRoute],
+  )
   return (
     <>
       {machines.map((machine, index) => {
         const image = machineTypes.find((item) => item.id === machine.machineTypeId)?.image
         if (!image) return null
         const visit = numbers.get(index + 1)
+        const window = visits.get(index + 1)
         return (
-          <PlacedMarker key={machine.id} id={machine.id} lat={machine.lat} lng={machine.lng} image={image} kind="machine">
+          <PlacedMarker
+            key={machine.id}
+            id={machine.id}
+            name={machine.name}
+            lat={machine.lat}
+            lng={machine.lng}
+            image={image}
+            kind="machine"
+          >
             {visit ? <StopBadge lat={machine.lat} lng={machine.lng} label={visit.label} color={visit.color} /> : null}
+            {window ? (
+              <TimeBadge lat={machine.lat} lng={machine.lng} label={formatRange(window.arrive, window.leave)} />
+            ) : null}
           </PlacedMarker>
         )
       })}
@@ -170,6 +173,7 @@ function MachineMarkers() {
 
 function PlacedMarker({
   id,
+  name,
   lat,
   lng,
   image,
@@ -177,6 +181,7 @@ function PlacedMarker({
   children,
 }: {
   id: string
+  name: string
   lat: number
   lng: number
   image: string
@@ -184,26 +189,12 @@ function PlacedMarker({
   children?: ReactNode
 }) {
   const markerRef = useRef<L.Marker>(null)
-  const popupId = useFuel((state) => state.popupId)
-  const select = useFuel((state) => state.select)
-  const setPopup = useFuel((state) => state.setPopup)
+  const selected = useFuel((state) => state.selectedId === id)
+  const inspect = useFuel((state) => state.inspect)
   const moveDepot = useFuel((state) => state.moveDepot)
   const moveMachine = useFuel((state) => state.moveMachine)
-  const icon = useMemo(
-    () =>
-      L.icon({
-        iconUrl: image,
-        iconSize: [40, 40],
-        iconAnchor: [20, 40],
-        popupAnchor: [0, -36],
-      }),
-    [image],
-  )
-
-  useEffect(() => {
-    if (popupId === id) markerRef.current?.openPopup()
-    else markerRef.current?.closePopup()
-  }, [id, popupId])
+  const icon = useMemo(() => pinIcon(image, selected), [image, selected])
+  useNameTooltip(markerRef, name, `${image}:${selected}`)
 
   return (
     <>
@@ -212,25 +203,88 @@ function PlacedMarker({
         position={[lat, lng]}
         icon={icon}
         draggable
+        bubblingMouseEvents={false}
+        zIndexOffset={selected ? 1000 : 0}
         eventHandlers={{
-          click: () => select(id),
+          click: () => inspect(id),
           dragend: (event) => {
             const next = event.target.getLatLng()
             if (kind === "depot") moveDepot(next.lat, next.lng)
             else moveMachine(id, next.lat, next.lng)
           },
-          popupclose: () => {
-            if (useFuel.getState().popupId === id) setPopup(null)
-          },
         }}
-      >
-        <Popup className="fuel-popup" minWidth={280} autoPan>
-          <MarkerFields id={id} />
-        </Popup>
-      </Marker>
+      />
       {children}
     </>
   )
+}
+
+function useNameTooltip(markerRef: RefObject<L.Marker | null>, name: string, revision: string) {
+  useEffect(() => {
+    const marker = markerRef.current
+    if (!marker) return
+    const bound = new Set<HTMLElement>()
+    const open = () => {
+      window.clearTimeout(hoverTimer)
+      const map = (marker as unknown as { _map: L.Map | null })._map
+      if (!map) return
+      hoverTimer = window.setTimeout(() => {
+        if (!hoverTip) {
+          hoverTip = L.tooltip({
+            direction: "right",
+            offset: [14, -24],
+            opacity: 1,
+            className: "fuel-tip",
+            interactive: false,
+          })
+        }
+        hoverTip.setContent(escapeHtml(name))
+        hoverTip.setLatLng(marker.getLatLng())
+        if (!map.hasLayer(hoverTip)) hoverTip.addTo(map)
+      }, HOVER_DELAY_MS)
+    }
+    const close = () => {
+      window.clearTimeout(hoverTimer)
+      hoverTip?.close()
+    }
+    const bind = () => {
+      const next = marker.getElement()
+      if (!next || bound.has(next)) return
+      next.addEventListener("mouseenter", open)
+      next.addEventListener("mouseleave", close)
+      bound.add(next)
+    }
+    bind()
+    const frame = window.requestAnimationFrame(bind)
+    marker.on("dragstart", close)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      for (const el of bound) {
+        el.removeEventListener("mouseenter", open)
+        el.removeEventListener("mouseleave", close)
+      }
+      marker.off("dragstart", close)
+      close()
+    }
+  }, [markerRef, name, revision])
+}
+
+function pinIcon(image: string, selected: boolean) {
+  const size = selected ? 48 : 40
+  return L.divIcon({
+    className: "fuel-pin",
+    html: `<img src="${escapeAttr(image)}" alt="" width="${size}" height="${size}" class="${selected ? "is-selected" : ""}" />`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size],
+  })
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
+
+function escapeAttr(value: string) {
+  return escapeHtml(value).replace(/"/g, "&quot;")
 }
 
 function StopBadge({ lat, lng, label, color }: { lat: number; lng: number; label: number; color: string }) {
@@ -243,6 +297,20 @@ function StopBadge({ lat, lng, label, color }: { lat: number; lng: number; label
         iconAnchor: [11, 52],
       }),
     [color, label],
+  )
+  return <Marker position={[lat, lng]} icon={icon} interactive={false} keyboard={false} />
+}
+
+function TimeBadge({ lat, lng, label }: { lat: number; lng: number; label: string }) {
+  const icon = useMemo(
+    () =>
+      L.divIcon({
+        className: "fuel-arrival",
+        html: `<span>${escapeHtml(label)}</span>`,
+        iconSize: [108, 18],
+        iconAnchor: [-18, 36],
+      }),
+    [label],
   )
   return <Marker position={[lat, lng]} icon={icon} interactive={false} keyboard={false} />
 }
@@ -298,11 +366,28 @@ function latLngs(coordinates: [number, number][]) {
 function visitNumbers(routes: number[][], selectedRoute: number | null) {
   const numbers = new Map<number, { label: number; color: string }>()
   routes.forEach((route, index) => {
-    const color =
-      selectedRoute === index ? SELECTED_ROUTE : ROUTE_COLORS[index % ROUTE_COLORS.length]
+    const color = selectedRoute === index ? SELECTED_ROUTE : ROUTE_COLORS[index % ROUTE_COLORS.length]
     route.forEach((node, stop) => {
       numbers.set(node, { label: stop + 1, color })
     })
   })
   return numbers
+}
+
+function visitWindows(
+  routes: number[][],
+  arrivals: number[][],
+  leaves: number[][],
+  selectedRoute: number | null,
+) {
+  const labels = new Map<number, { arrive: number; leave: number }>()
+  routes.forEach((route, index) => {
+    if (selectedRoute !== null && selectedRoute !== index) return
+    route.forEach((node, stop) => {
+      const arrive = arrivals[index]?.[stop]
+      const leave = leaves[index]?.[stop]
+      if (typeof arrive === "number" && typeof leave === "number") labels.set(node, { arrive, leave })
+    })
+  })
+  return labels
 }

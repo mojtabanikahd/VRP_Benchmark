@@ -275,6 +275,74 @@ def route_geometry(payload: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     return {"type": "LineString", "coordinates": coordinates}, streets
 
 
+def route_schedule(
+    scenario: FuelScenario, travel_min: np.ndarray, routes: list[list[int]]
+) -> dict[str, list[Any]]:
+    """Clock each route the same way the time-window check does.
+
+    The tanker leaves the depot when the shift opens. ``arrivals_min`` is the
+    moment it reaches each machine, before waiting for that window.
+    ``leaves_min`` is when it drives on, after that wait and the refueling.
+    It then drives back to the depot.
+    """
+    depart_min: list[float] = []
+    arrivals_min: list[list[float]] = []
+    leaves_min: list[list[float]] = []
+    return_min: list[float] = []
+    opens = [float(scenario.depot.window_open_min)]
+    opens.extend(float(machine.window_open_min) for machine in scenario.machines)
+    service = [0.0]
+    service.extend(float(machine.duration_min) for machine in scenario.machines)
+    for route in routes:
+        clock = opens[0]
+        depart_min.append(clock)
+        if not route:
+            arrivals_min.append([])
+            leaves_min.append([])
+            return_min.append(clock)
+            continue
+        prev = 0
+        arrivals: list[float] = []
+        leaves: list[float] = []
+        for node in route:
+            clock += float(travel_min[prev, node])
+            arrivals.append(clock)
+            clock = max(clock, opens[node])
+            clock += service[node]
+            leaves.append(clock)
+            prev = node
+        clock += float(travel_min[prev, 0])
+        arrivals_min.append(arrivals)
+        leaves_min.append(leaves)
+        return_min.append(clock)
+    return {
+        "depart_min": depart_min,
+        "arrivals_min": arrivals_min,
+        "leaves_min": leaves_min,
+        "return_min": return_min,
+    }
+
+
+def route_distances(distance_km: np.ndarray, routes: list[list[int]]) -> dict[str, list[Any]]:
+    """Driving kilometers for each hop, including the return to the depot."""
+    leg_km: list[list[float]] = []
+    route_km: list[float] = []
+    for route in routes:
+        if not route:
+            leg_km.append([])
+            route_km.append(0.0)
+            continue
+        prev = 0
+        hops: list[float] = []
+        for node in route:
+            hops.append(float(distance_km[prev, node]))
+            prev = node
+        hops.append(float(distance_km[prev, 0]))
+        leg_km.append(hops)
+        route_km.append(float(sum(hops)))
+    return {"leg_km": leg_km, "route_km": route_km}
+
+
 def solve_fuel_job(work: FuelWork) -> dict[str, Any]:
     """Fetch the driving matrix, solve, then attach one street path per route."""
     scenario = validate_scenario(work.scenario)
@@ -302,6 +370,8 @@ def solve_fuel_job(work: FuelWork) -> dict[str, Any]:
         except FuelError as exc:
             raise FuelError(f"route {index + 1}: {exc}") from exc
         paths.append({"stops": list(route), "geometry": geometry, "streets": streets})
+    schedule = route_schedule(scenario, travel_min, solution.routes)
+    distances = route_distances(distance_km, solution.routes)
     return {
         "routes": solution.routes,
         "route_depots": [],
@@ -314,6 +384,8 @@ def solve_fuel_job(work: FuelWork) -> dict[str, Any]:
         "violations": list(checked.violations),
         "solver_version": solver.version(),
         "paths": paths,
+        **schedule,
+        **distances,
     }
 
 

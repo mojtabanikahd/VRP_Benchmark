@@ -4,13 +4,15 @@ export function fuelIssues(input: {
   depot: FuelDepot | null
   machines: FuelMachine[]
   machineTypes: MachineType[]
-  tankerTypes: TankerType[]
-  tankerTypeId: string
+  tanker: TankerType | null
   solver: string | null
 }): string[] {
   const issues: string[] = []
-  const tanker = input.tankerTypes.find((item) => item.id === input.tankerTypeId) ?? null
-  if (!tanker) issues.push("Choose a tanker type")
+  const tanker = input.tanker
+  if (!tanker) issues.push("Set the tanker")
+  else if (!Number.isInteger(tanker.capacityL) || tanker.capacityL < 1) {
+    issues.push("Tanker capacity must be a whole number of liters")
+  }
   if (!input.depot) issues.push("Place a depot on the map")
   if (input.machines.length === 0) issues.push("Place at least one machine")
   if (input.depot && input.depot.windowOpenMin > input.depot.windowCloseMin) {

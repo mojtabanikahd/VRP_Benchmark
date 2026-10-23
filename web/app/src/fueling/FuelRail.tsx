@@ -8,17 +8,16 @@ import { Label } from "../components/ui/label"
 import { Slider } from "../components/ui/slider"
 import { cn } from "../lib/utils"
 import { fetchFuelCatalog } from "./api"
-import { downloadScenario, parseScenarioFile } from "./file"
+import { downloadScenario, parseScenarioText } from "./file"
 import { readImageFile } from "./icons"
 import { fuelIssues } from "./issues"
-import { selectedTanker, useFuel } from "./store"
+import { useFuel } from "./store"
 import { useFuelSolve } from "./useFuelSolve"
 
 export function FuelRail() {
   const name = useFuel((state) => state.name)
   const machineTypes = useFuel((state) => state.machineTypes)
-  const tankerTypes = useFuel((state) => state.tankerTypes)
-  const tankerTypeId = useFuel((state) => state.tankerTypeId)
+  const tanker = useFuel((state) => state.tanker)
   const depot = useFuel((state) => state.depot)
   const machines = useFuel((state) => state.machines)
   const solver = useFuel((state) => state.solver)
@@ -32,17 +31,13 @@ export function FuelRail() {
   const addMachineType = useFuel((state) => state.addMachineType)
   const updateMachineType = useFuel((state) => state.updateMachineType)
   const removeMachineType = useFuel((state) => state.removeMachineType)
-  const addTankerType = useFuel((state) => state.addTankerType)
-  const updateTankerType = useFuel((state) => state.updateTankerType)
-  const removeTankerType = useFuel((state) => state.removeTankerType)
-  const selectTankerType = useFuel((state) => state.selectTankerType)
+  const updateTanker = useFuel((state) => state.updateTanker)
   const loadFile = useFuel((state) => state.loadFile)
   const setFileError = useFuel((state) => state.setFileError)
   const fileRef = useRef<HTMLInputElement>(null)
   const catalog = useQuery({ queryKey: ["fuel-catalog"], queryFn: fetchFuelCatalog })
   const { solve, running } = useFuelSolve()
-  const tanker = selectedTanker({ tankerTypes, tankerTypeId })
-  const issues = fuelIssues({ depot, machines, machineTypes, tankerTypes, tankerTypeId, solver })
+  const issues = fuelIssues({ depot, machines, machineTypes, tanker, solver })
 
   const solverNames = catalog.data?.solvers.map((item) => item.name).join("\n") ?? ""
   useEffect(() => {
@@ -84,26 +79,18 @@ export function FuelRail() {
             />
           ))}
         </TypeSection>
-        <TypeSection title="Tanker types" onAdd={addTankerType} addLabel="Add tanker type">
-          {tankerTypes.map((item) => (
-            <TypeRow
-              key={item.id}
-              name={item.name}
-              image={item.image}
-              active={item.id === tankerTypeId}
-              capacityL={item.capacityL}
-              onSelect={() => selectTankerType(item.id)}
-              onName={(value) => updateTankerType(item.id, { name: value })}
-              onCapacity={(value) => updateTankerType(item.id, { capacityL: Math.max(1, Math.round(value)) })}
-              onImage={(image) => updateTankerType(item.id, { image })}
-              onRemove={tankerTypes.length > 1 ? () => removeTankerType(item.id) : undefined}
-              onImageError={setFileError}
-            />
-          ))}
-          {tanker ? (
-            <p className="text-xs text-ink-soft">Fleet tank capacity {tanker.capacityL} L · {tanker.name}</p>
-          ) : null}
-        </TypeSection>
+        <section className="space-y-2">
+          <Label>Tanker</Label>
+          <TypeRow
+            name={tanker.name}
+            image={tanker.image}
+            capacityL={tanker.capacityL}
+            onName={(value) => updateTanker({ name: value })}
+            onCapacity={(value) => updateTanker({ capacityL: Math.max(1, Math.round(value)) })}
+            onImage={(image) => updateTanker({ image })}
+            onImageError={setFileError}
+          />
+        </section>
         <section className="space-y-2">
           <Label>Solver</Label>
           {catalog.isLoading ? <p className="text-sm text-ink-soft">Loading solvers…</p> : null}
@@ -150,7 +137,7 @@ export function FuelRail() {
             type="button"
             variant="outline"
             onClick={() =>
-              downloadScenario({ name, machineTypes, tankerTypes, tankerTypeId, depot, machines })
+              downloadScenario({ name, machineTypes, tanker, depot, machines, solver, timeBudgetS, seed })
             }
           >
             <Download className="size-4" />
@@ -171,7 +158,7 @@ export function FuelRail() {
               if (!file) return
               void file
                 .text()
-                .then((text) => parseScenarioFile(JSON.parse(text) as unknown))
+                .then((text) => parseScenarioText(text))
                 .then(loadFile)
                 .catch((reason: unknown) => {
                   setFileError(reason instanceof Error ? reason.message : "Could not load that scenario")

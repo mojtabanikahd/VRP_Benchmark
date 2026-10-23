@@ -1,20 +1,10 @@
-import { useEffect, useRef, type ReactNode } from "react"
+import type { ReactNode } from "react"
 
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
 import { useFuel } from "./store"
 import { clockToMinutes, minutesToClock } from "./time"
-
-let holdMapClicksUntil = 0
-
-export function mapClickHeld() {
-  return performance.now() < holdMapClicksUntil
-}
-
-function holdMapClicks() {
-  holdMapClicksUntil = performance.now() + 300
-}
 
 export function MarkerFields({ id }: { id: string }) {
   const depot = useFuel((state) => state.depot)
@@ -129,38 +119,10 @@ export function MarkerFields({ id }: { id: string }) {
 }
 
 function RemovePoint({ onRemove }: { onRemove: () => void }) {
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const node = ref.current
-    if (!node) return
-    const stop = (event: Event) => {
-      event.preventDefault()
-      event.stopPropagation()
-    }
-    const onClick = (event: Event) => {
-      stop(event)
-      holdMapClicks()
-      onRemove()
-    }
-    node.addEventListener("click", onClick, true)
-    node.addEventListener("mousedown", stop, true)
-    node.addEventListener("mouseup", stop, true)
-    node.addEventListener("pointerdown", stop, true)
-    node.addEventListener("pointerup", stop, true)
-    return () => {
-      node.removeEventListener("click", onClick, true)
-      node.removeEventListener("mousedown", stop, true)
-      node.removeEventListener("mouseup", stop, true)
-      node.removeEventListener("pointerdown", stop, true)
-      node.removeEventListener("pointerup", stop, true)
-    }
-  }, [onRemove])
   return (
-    <div ref={ref}>
-      <Button type="button" variant="outline" size="sm">
-        Remove
-      </Button>
-    </div>
+    <Button type="button" variant="outline" size="sm" onClick={onRemove}>
+      Remove
+    </Button>
   )
 }
 

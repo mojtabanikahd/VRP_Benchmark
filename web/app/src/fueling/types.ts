@@ -53,4 +53,10 @@ export interface FuelResult {
   violations: string[]
   solver_version: string
   paths: RoadPath[]
+  depart_min: number[]
+  arrivals_min: number[][]
+  leaves_min: number[][]
+  return_min: number[]
+  leg_km: number[][]
+  route_km: number[]
 }

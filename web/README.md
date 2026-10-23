@@ -73,8 +73,8 @@ Words used on this screen:
 | --- | --- |
 | Machine | Equipment that needs fuel. This is a VRPTW customer. |
 | Machine type | A name, a marker image, a default fuel demand in liters, and a default refueling duration in minutes. A new machine copies those two defaults. Changing a machine's type copies that type's defaults again. Editing the type later does not change machines already on the map, and each machine can still use its own fuel demand and duration. |
-| Tanker type | A name, a tank capacity in whole liters, and a marker image. The scenario uses one type, so every tanker has the same capacity. |
-| Depot | The single base. Its marker uses the selected tanker type's image. Tankers are not separate pins. |
+| Tanker | One model: a name, a tank capacity in whole liters, and the depot marker image. Every tanker in the fleet uses that capacity. |
+| Depot | The single base. Its marker uses the tanker image. Tankers are not separate pins. |
 | Fuel demand | Liters that machine must receive. |
 | Refueling window | Clock time when fueling may start and the latest time it may start. |
 | Refueling duration | Minutes the tanker spends at that machine. |
@@ -84,25 +84,25 @@ Words used on this screen:
 ### Build a scenario
 
 1. Under **Machine types**, name each kind of machine, set **Default fuel demand (L)** and **Default refueling (min)**, and click its thumbnail to replace the image. Images must be 200 KB or smaller. New types start at 100 L and 15 minutes.
-2. Under **Tanker types**, set the name, tank capacity in liters, and image. Press **Use** on the type that should run this scenario. The fleet capacity shown under the list is that tank.
+2. Under **Tanker**, set the name, tank capacity in liters, and image. That one model is the fleet.
 3. Choose **PyVRP** or **OR-Tools**, then set the time budget and seed.
 4. On the map, **Set depot**, **Place machine**, and **Select** sit at the top-left. Zoom in and zoom out sit at the top-right.
-5. Choose **Set depot** and click once to place the depot. Drag the marker to move it. The popup, and the **Details** panel, set the depot name and the shift (when tankers may leave and must return).
-6. Choose **Place machine** and click the map for each machine. The new machine starts with its type's default fuel demand and refueling duration. The popup sets the name, machine type, fuel demand in liters, refueling window, and refueling duration. **Select** edits an existing marker without moving the map.
-7. **Remove** on the top-left bar deletes the selected depot or machine. The same action is on the marker popup, the **Details** panel, and each row in **List**. **Delete** or **Backspace** does this too, except while typing in a field. Removing either point clears the previous routes.
+5. Choose **Set depot** and click once to place the depot. Drag the marker to move it. The **Details** panel sets the depot name and the shift (when tankers may leave and must return).
+6. Choose **Place machine** and click the map for each machine. The new machine starts with its type's default fuel demand and refueling duration. **Details** sets the name, machine type, fuel demand in liters, refueling window, and refueling duration. **Select**, then click a marker, opens that point in **Details** without a popup. The selected marker grows slightly and gains a copper ring. Rest the pointer on a marker and its name appears beside the icon.
+7. **Remove** in **Details** and on each **List** row deletes the selected depot or machine. **Delete** or **Backspace** does this too, except while typing in a field. Removing either point clears the previous routes.
 8. In **List**, click a depot or machine name to select it, open its details, and move the map to it. If the map is zoomed farther out than street level, it zooms in. **Remove** on that row deletes the point and does not move the map.
 
-Solve stays disabled until there is a depot, at least one machine, a tanker type, and a solver, and every machine's fuel demand is a whole number of liters no larger than the tank.
+Solve stays disabled until there is a depot, at least one machine, a tanker, and a solver, and every machine's fuel demand is a whole number of liters no larger than the tank.
 
 ### Save and load
 
-**Save** downloads a `.fueling.json` file. It contains the scenario name, both type catalogs (including each machine type's default fuel demand and refueling duration), their images, the selected tanker type, the depot, and every machine. **Load** reads that file back. A file saved before those defaults existed loads them as 100 L and 15 minutes. Solver, time budget, and seed are not stored in the file.
+**Save** downloads a `.fueling.json` file. It contains everything needed to rebuild the scenario: the name, machine types (including each default fuel demand, refueling duration, and image), the tanker, the depot and every machine with their map positions and refueling fields, plus the solver, time budget, and seed. **Load** replaces the scenario on screen and fits the map to those positions. A file saved with several tanker types keeps the one that was selected. A file saved before machine-type defaults existed loads them as 100 L and 15 minutes. An older file that omitted the solver keeps the solver, budget, and seed already on screen.
 
 ### What a solve shows
 
-The API asks OSRM for the driving distance and driving time between the depot and every machine, solves the VRPTW, then asks OSRM for the full street geometry of each route. The map draws that geometry. It does not draw a straight line between stops. Stop numbers on the machines show the visit order.
+The API asks OSRM for the driving distance and driving time between the depot and every machine, solves the VRPTW, then asks OSRM for the full street geometry of each route. The map draws that geometry. It does not draw a straight line between stops. Stop numbers on the machines show the visit order. A clock label shows the interval from the tanker's arrival until it leaves, after any wait for the window and the refueling itself. Selecting one route in the dock leaves only that route's intervals on the map.
 
-The dock reports driving distance in kilometers, feasibility, and one row per tanker. Each row lists the machine order and the street names along that drive. Tracks with no name from the router are labeled **Unnamed roads**. Click a row to highlight that path and fit the map to it.
+The dock reports total driving distance in kilometers, feasibility, and one card per tanker. Each card shows that trip's distance, the depot departure, each machine's arrival–departure interval, the kilometers of every hop, and the return to the depot, then the street names along that drive. Tracks with no name from the router are labeled **Unnamed roads**. Click a card to highlight that path and fit the map to it.
 
 Moving the depot or a machine clears the previous paths, because they no longer match the positions.
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from "react-resizable-panels"
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
@@ -14,7 +14,13 @@ export function FuelApp() {
   const jobError = useFuel((state) => state.jobError)
   const removeSelected = useFuel((state) => state.removeSelected)
   const selectedId = useFuel((state) => state.selectedId)
+  const detailToken = useFuel((state) => state.detailToken)
   const focusPoint = useFuel((state) => state.focusPoint)
+  const [tab, setTab] = useState("details")
+
+  useEffect(() => {
+    if (detailToken > 0) setTab("details")
+  }, [detailToken])
 
   useEffect(() => {
     dockRef.current?.collapse()
@@ -50,7 +56,7 @@ export function FuelApp() {
           </Panel>
           <PanelResizeHandle className="w-px bg-line transition-colors hover:bg-copper/50" />
           <Panel defaultSize={24} minSize={18} maxSize={40}>
-            <Tabs defaultValue="details">
+            <Tabs value={tab} onValueChange={setTab}>
               <TabsList>
                 <TabsTrigger value="details">Details</TabsTrigger>
                 <TabsTrigger value="list">List</TabsTrigger>
