@@ -1,3 +1,5 @@
+import { copy } from "./copy"
+
 const machineSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
   <rect width="64" height="64" rx="14" fill="#14181c"/>
   <rect x="14" y="28" width="28" height="16" rx="3" fill="#f3efe6"/>
@@ -22,22 +24,22 @@ export const MAX_IMAGE_BYTES = 200 * 1024
 
 export function readImageFile(file: File): Promise<string> {
   if (!file.type.startsWith("image/")) {
-    return Promise.reject(new Error("Choose an image file"))
+    return Promise.reject(new Error(copy.imageFile))
   }
   if (file.size > MAX_IMAGE_BYTES) {
-    return Promise.reject(new Error("Image must be 200 KB or smaller"))
+    return Promise.reject(new Error(copy.imageSize))
   }
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => {
       const result = reader.result
       if (typeof result !== "string" || !result.startsWith("data:image/")) {
-        reject(new Error("Could not read that image"))
+        reject(new Error(copy.imageRead))
         return
       }
       resolve(result)
     }
-    reader.onerror = () => reject(new Error("Could not read that image"))
+    reader.onerror = () => reject(new Error(copy.imageRead))
     reader.readAsDataURL(file)
   })
 }

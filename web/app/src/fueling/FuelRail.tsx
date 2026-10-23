@@ -8,6 +8,7 @@ import { Label } from "../components/ui/label"
 import { Slider } from "../components/ui/slider"
 import { cn } from "../lib/utils"
 import { fetchFuelCatalog } from "./api"
+import { copy } from "./copy"
 import { downloadScenario, parseScenarioText } from "./file"
 import { readImageFile } from "./icons"
 import { fuelIssues } from "./issues"
@@ -24,8 +25,14 @@ export function FuelRail() {
   const timeBudgetS = useFuel((state) => state.timeBudgetS)
   const seed = useFuel((state) => state.seed)
   const fileError = useFuel((state) => state.fileError)
+  const canUndo = useFuel((state) => state.canUndo)
+  const canRedo = useFuel((state) => state.canRedo)
   const setName = useFuel((state) => state.setName)
   const setSolver = useFuel((state) => state.setSolver)
+  const ensureSolver = useFuel((state) => state.ensureSolver)
+  const undo = useFuel((state) => state.undo)
+  const redo = useFuel((state) => state.redo)
+  const reset = useFuel((state) => state.reset)
   const setTimeBudget = useFuel((state) => state.setTimeBudget)
   const setSeed = useFuel((state) => state.setSeed)
   const addMachineType = useFuel((state) => state.addMachineType)
@@ -44,24 +51,24 @@ export function FuelRail() {
     const names = solverNames.split("\n").filter(Boolean)
     const first = names[0]
     if (!first) return
-    if (!solver || !names.includes(solver)) setSolver(first)
-  }, [setSolver, solver, solverNames])
+    if (!solver || !names.includes(solver)) ensureSolver(first)
+  }, [ensureSolver, solver, solverNames])
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-paper">
       <header className="border-b border-line px-4 py-4">
-        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-copper">Refueling</p>
-        <h1 className="font-display text-3xl leading-none text-ink">Fueling</h1>
+        <p className="text-[11px] font-medium tracking-[0.18em] text-copper">{copy.eyebrow}</p>
+        <h1 className="font-display text-3xl leading-none text-ink">{copy.appTitle}</h1>
       </header>
       <div className="min-h-0 flex-1 space-y-5 overflow-auto px-4 py-4">
         <section className="space-y-2">
-          <Label htmlFor="fuel-name">Scenario</Label>
+          <Label htmlFor="fuel-name">{copy.scenario}</Label>
           <Input id="fuel-name" value={name} onChange={(event) => setName(event.target.value)} />
         </section>
         <TypeSection
-          title="Machine types"
+          title={copy.machineTypes}
           onAdd={addMachineType}
-          addLabel="Add machine type"
+          addLabel={copy.addMachineType}
         >
           {machineTypes.map((item) => (
             <TypeRow
@@ -80,7 +87,7 @@ export function FuelRail() {
           ))}
         </TypeSection>
         <section className="space-y-2">
-          <Label>Tanker</Label>
+          <Label>{copy.tanker}</Label>
           <TypeRow
             name={tanker.name}
             image={tanker.image}
@@ -92,11 +99,9 @@ export function FuelRail() {
           />
         </section>
         <section className="space-y-2">
-          <Label>Solver</Label>
-          {catalog.isLoading ? <p className="text-sm text-ink-soft">Loading solvers…</p> : null}
-          {catalog.isError ? (
-            <p className="text-sm text-copper">The solver catalog is unavailable. Start the API and refresh.</p>
-          ) : null}
+          <Label>{copy.solver}</Label>
+          {catalog.isLoading ? <p className="text-sm text-ink-soft">{copy.loadingSolvers}</p> : null}
+          {catalog.isError ? <p className="text-sm text-copper">{copy.catalogUnavailable}</p> : null}
           <div className="space-y-1.5">
             {catalog.data?.solvers.map((item) => {
               const active = item.name === solver
@@ -106,7 +111,7 @@ export function FuelRail() {
                   type="button"
                   onClick={() => setSolver(item.name)}
                   className={cn(
-                    "flex w-full items-baseline justify-between rounded-md border px-2.5 py-2 text-left",
+                    "flex w-full items-baseline justify-between rounded-md border px-2.5 py-2 text-start",
                     active ? "border-ink bg-ink text-paper" : "border-line bg-paper hover:border-ink/30",
                   )}
                 >
@@ -119,11 +124,11 @@ export function FuelRail() {
         </section>
         <section className="space-y-2">
           <div className="flex items-center justify-between">
-            <Label>Time budget</Label>
+            <Label>{copy.timeBudget}</Label>
             <span className="text-sm tabular-nums text-ink">{timeBudgetS}s</span>
           </div>
           <Slider value={timeBudgetS} min={1} max={60} step={1} onValueChange={setTimeBudget} />
-          <Label htmlFor="fuel-seed">Seed</Label>
+          <Label htmlFor="fuel-seed">{copy.seed}</Label>
           <Input
             id="fuel-seed"
             type="number"
@@ -141,11 +146,11 @@ export function FuelRail() {
             }
           >
             <Download className="size-4" />
-            Save
+            {copy.save}
           </Button>
           <Button type="button" variant="outline" onClick={() => fileRef.current?.click()}>
             <Upload className="size-4" />
-            Load
+            {copy.load}
           </Button>
           <input
             ref={fileRef}
@@ -161,10 +166,21 @@ export function FuelRail() {
                 .then((text) => parseScenarioText(text))
                 .then(loadFile)
                 .catch((reason: unknown) => {
-                  setFileError(reason instanceof Error ? reason.message : "Could not load that scenario")
+                  setFileError(reason instanceof Error ? reason.message : copy.loadFailed)
                 })
             }}
           />
+        </section>
+        <section className="grid grid-cols-2 gap-2">
+          <Button type="button" variant="outline" disabled={!canUndo} onClick={undo}>
+            {copy.undo}
+          </Button>
+          <Button type="button" variant="outline" disabled={!canRedo} onClick={redo}>
+            {copy.redo}
+          </Button>
+          <Button type="button" variant="outline" className="col-span-2" onClick={reset}>
+            {copy.reset}
+          </Button>
         </section>
         {fileError ? <p className="text-xs leading-relaxed text-copper">{fileError}</p> : null}
         {issues.length > 0 ? (
@@ -177,7 +193,7 @@ export function FuelRail() {
       </div>
       <div className="border-t border-line p-4">
         <Button type="button" size="lg" className="w-full" disabled={issues.length > 0 || running} onClick={() => solve()}>
-          {running ? "Solving" : "Solve"}
+          {running ? copy.solving : copy.solve}
         </Button>
       </div>
     </div>
@@ -251,19 +267,19 @@ function TypeRow({
   return (
     <div className={cn("space-y-2 rounded-md border p-2", active ? "border-ink" : "border-line")}>
       <div className="flex items-center gap-2">
-        <button type="button" onClick={() => inputRef.current?.click()} title="Replace image">
+        <button type="button" onClick={() => inputRef.current?.click()} title={copy.replaceImage}>
           <img src={image} alt="" className="size-9 rounded-md object-cover" />
         </button>
         <Input value={name} onChange={(event) => onName(event.target.value)} />
         {onSelect ? (
           <Button type="button" variant={active ? "default" : "outline"} size="sm" onClick={onSelect}>
-            Use
+            {copy.select}
           </Button>
         ) : null}
       </div>
       {onCapacity ? (
         <label className="block space-y-1">
-          <Label>Tank capacity (L)</Label>
+          <Label>{copy.tankCapacity}</Label>
           <Input
             type="number"
             min={1}
@@ -275,7 +291,7 @@ function TypeRow({
       ) : null}
       {onFuel ? (
         <label className="block space-y-1">
-          <Label>Default fuel demand (L)</Label>
+          <Label>{copy.defaultFuel}</Label>
           <Input
             type="number"
             min={1}
@@ -287,7 +303,7 @@ function TypeRow({
       ) : null}
       {onDuration ? (
         <label className="block space-y-1">
-          <Label>Default refueling (min)</Label>
+          <Label>{copy.defaultDuration}</Label>
           <Input
             type="number"
             min={0}
@@ -299,7 +315,7 @@ function TypeRow({
       ) : null}
       {onRemove ? (
         <button type="button" className="text-xs text-ink-soft underline" onClick={onRemove}>
-          Remove type
+          {copy.removeType}
         </button>
       ) : null}
       <input
@@ -312,7 +328,7 @@ function TypeRow({
           event.target.value = ""
           if (!file) return
           void readImageFile(file).then(onImage).catch((reason: unknown) => {
-            onImageError(reason instanceof Error ? reason.message : "Could not read that image")
+            onImageError(reason instanceof Error ? reason.message : copy.imageRead)
           })
         }}
       />

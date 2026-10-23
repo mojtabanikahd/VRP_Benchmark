@@ -27,6 +27,8 @@ from vrpbench.solvers.base import SolverError
 FUEL_SOLVERS = ("pyvrp", "ortools")
 _MAX_MACHINES = 99
 _DAY_MINUTES = 24 * 60
+_WINDOW_ERROR = "No schedule meets the refueling windows"
+_CLOCK_EPS = 1e-6
 
 
 class FuelError(ValueError):
@@ -150,6 +152,8 @@ def validate_scenario(scenario: FuelScenario) -> FuelScenario:
         )
         if not np.isfinite(machine.duration_min):
             raise FuelError(f"{machine.name} refueling duration must be finite")
+        if machine.duration_min > machine.window_close_min - machine.window_open_min:
+            raise FuelError(f"{machine.name} refueling duration does not fit in its window")
         if machine.fuel_l > tanker.capacity_l:
             raise FuelError(
                 f"{machine.name} fuel demand {machine.fuel_l} L exceeds "
@@ -193,8 +197,18 @@ def build_fuel_instance(
     nodes = [scenario.depot, *scenario.machines]
     coords = np.asarray([[node.lng, node.lat] for node in nodes], dtype=float)
     demands = np.asarray([0, *[machine.fuel_l for machine in scenario.machines]], dtype=int)
+    # Latest start is close minus service, so refueling finishes inside the window.
     windows = np.asarray(
-        [[node.window_open_min, node.window_close_min] for node in nodes],
+        [
+            [float(scenario.depot.window_open_min), float(scenario.depot.window_close_min)],
+            *[
+                [
+                    float(machine.window_open_min),
+                    float(machine.window_close_min) - float(machine.duration_min),
+                ]
+                for machine in scenario.machines
+            ],
+        ],
         dtype=float,
     )
     service = np.asarray(
@@ -278,12 +292,13 @@ def route_geometry(payload: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
 def route_schedule(
     scenario: FuelScenario, travel_min: np.ndarray, routes: list[list[int]]
 ) -> dict[str, list[Any]]:
-    """Clock each route the same way the time-window check does.
+    """Clock each route so refueling starts inside the machine window.
 
-    The tanker leaves the depot when the shift opens. ``arrivals_min`` is the
-    moment it reaches each machine, before waiting for that window.
-    ``leaves_min`` is when it drives on, after that wait and the refueling.
-    It then drives back to the depot.
+    The tanker leaves the depot late enough to reach the first machine when
+    that window opens, when the earliest departure can still meet every later
+    window and the return. Waiting that cannot be absorbed at the depot stays
+    on site. ``arrivals_min`` is the start of refueling, after that wait.
+    ``leaves_min`` is when refueling ends and the tanker drives on.
     """
     depart_min: list[float] = []
     arrivals_min: list[list[float]] = []
@@ -291,36 +306,65 @@ def route_schedule(
     return_min: list[float] = []
     opens = [float(scenario.depot.window_open_min)]
     opens.extend(float(machine.window_open_min) for machine in scenario.machines)
+    closes = [float(scenario.depot.window_close_min)]
+    closes.extend(float(machine.window_close_min) for machine in scenario.machines)
     service = [0.0]
     service.extend(float(machine.duration_min) for machine in scenario.machines)
     for route in routes:
-        clock = opens[0]
-        depart_min.append(clock)
         if not route:
+            depart_min.append(opens[0])
             arrivals_min.append([])
             leaves_min.append([])
-            return_min.append(clock)
+            return_min.append(opens[0])
             continue
-        prev = 0
-        arrivals: list[float] = []
-        leaves: list[float] = []
-        for node in route:
-            clock += float(travel_min[prev, node])
-            arrivals.append(clock)
-            clock = max(clock, opens[node])
-            clock += service[node]
-            leaves.append(clock)
-            prev = node
-        clock += float(travel_min[prev, 0])
+        _replay(opens[0], route, travel_min, opens, closes, service)
+        target = opens[route[0]] - float(travel_min[0, route[0]])
+        depart = max(opens[0], target)
+        arrivals, leaves, back = _replay(depart, route, travel_min, opens, closes, service)
+        depart_min.append(depart)
         arrivals_min.append(arrivals)
         leaves_min.append(leaves)
-        return_min.append(clock)
+        return_min.append(back)
     return {
         "depart_min": depart_min,
         "arrivals_min": arrivals_min,
         "leaves_min": leaves_min,
         "return_min": return_min,
     }
+
+
+def _misses_window(violations: list[str]) -> bool:
+    markers = ("arrival", "latest", "return", "depot close")
+    return any(any(marker in item for marker in markers) for item in violations)
+
+
+def _replay(
+    depart: float,
+    route: list[int],
+    travel_min: np.ndarray,
+    opens: list[float],
+    closes: list[float],
+    service: list[float],
+) -> tuple[list[float], list[float], float]:
+    """Return service starts, service ends, and the depot return time."""
+    clock = float(depart)
+    prev = 0
+    arrivals: list[float] = []
+    leaves: list[float] = []
+    for node in route:
+        clock += float(travel_min[prev, node])
+        latest = closes[node] - service[node]
+        start = max(clock, opens[node])
+        if start > latest + _CLOCK_EPS:
+            raise FuelError(_WINDOW_ERROR)
+        arrivals.append(start)
+        clock = start + service[node]
+        leaves.append(clock)
+        prev = node
+    clock += float(travel_min[prev, 0])
+    if clock > closes[0] + _CLOCK_EPS:
+        raise FuelError(_WINDOW_ERROR)
+    return arrivals, leaves, clock
 
 
 def route_distances(distance_km: np.ndarray, routes: list[list[int]]) -> dict[str, list[Any]]:
@@ -360,6 +404,12 @@ def solve_fuel_job(work: FuelWork) -> dict[str, Any]:
     except SolverError as exc:
         raise FuelError(str(exc)) from exc
     checked = evaluate.verify(instance, solution)
+    if not checked.feasible:
+        if _misses_window(checked.violations):
+            raise FuelError(_WINDOW_ERROR)
+        raise FuelError("; ".join(checked.violations))
+    schedule = route_schedule(scenario, travel_min, solution.routes)
+    distances = route_distances(distance_km, solution.routes)
     paths = []
     for index, route in enumerate(solution.routes):
         if not route:
@@ -370,8 +420,6 @@ def solve_fuel_job(work: FuelWork) -> dict[str, Any]:
         except FuelError as exc:
             raise FuelError(f"route {index + 1}: {exc}") from exc
         paths.append({"stops": list(route), "geometry": geometry, "streets": streets})
-    schedule = route_schedule(scenario, travel_min, solution.routes)
-    distances = route_distances(distance_km, solution.routes)
     return {
         "routes": solution.routes,
         "route_depots": [],

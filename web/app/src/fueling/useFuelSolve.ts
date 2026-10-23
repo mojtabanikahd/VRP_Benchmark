@@ -2,6 +2,7 @@ import { useMutation, useQuery } from "@tanstack/react-query"
 import { useEffect, useState } from "react"
 
 import { createFuelJob, fetchFuelJob } from "./api"
+import { copy, persianError } from "./copy"
 import { fuelPayload, useFuel } from "./store"
 
 export function useFuelSolve() {
@@ -17,7 +18,7 @@ export function useFuelSolve() {
     },
     onSuccess: (job) => setJobId(job.id),
     onError: (reason: unknown) => {
-      setJobError(reason instanceof Error ? reason.message : "The solver failed")
+      setJobError(persianError(reason instanceof Error ? reason.message : copy.solverFailed))
     },
   })
 
@@ -36,7 +37,7 @@ export function useFuelSolve() {
     const view = job.data
     if (!view || view.id !== jobId) return
     if (view.status === "ok" && view.result) setSolution(view.result)
-    if (view.status === "error") setJobError(view.error ?? "The solver failed")
+    if (view.status === "error") setJobError(persianError(view.error ?? copy.solverFailed))
   }, [job.data, jobId, setJobError, setSolution])
 
   const running =

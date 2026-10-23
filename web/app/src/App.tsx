@@ -12,8 +12,13 @@ import { useStudio } from "./scenario/store"
 
 export function App() {
   const [mode, setMode] = useState<"studio" | "fueling">("studio")
+  const fueling = mode === "fueling"
   return (
-    <div className="flex h-dvh flex-col">
+    <div
+      className={fueling ? "fuel-ui flex h-dvh flex-col" : "flex h-dvh flex-col"}
+      dir={fueling ? "rtl" : "ltr"}
+      lang={fueling ? "fa" : "en"}
+    >
       <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line bg-paper px-4">
         <p className="font-display text-xl leading-none text-ink">VRP Studio</p>
         <div className="flex gap-1">
@@ -21,7 +26,7 @@ export function App() {
             Studio
           </ModeButton>
           <ModeButton active={mode === "fueling"} onClick={() => setMode("fueling")}>
-            Fueling
+            سوخت‌رسانی
           </ModeButton>
         </div>
       </header>

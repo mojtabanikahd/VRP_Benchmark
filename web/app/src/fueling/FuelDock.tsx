@@ -3,6 +3,7 @@ import { motion } from "motion/react"
 import { Badge } from "../components/ui/badge"
 import { cn } from "../lib/utils"
 import { ROUTE_COLORS, SELECTED_ROUTE } from "../scenario/types"
+import { copy, stopLabel, tankerLabel } from "./copy"
 import { useFuel } from "./store"
 import { formatMinutes, formatRange } from "./time"
 import type { FuelResult } from "./types"
@@ -14,6 +15,7 @@ export function FuelDock() {
   const machines = useFuel((state) => state.machines)
   const selectedRoute = useFuel((state) => state.selectedRoute)
   const selectRoute = useFuel((state) => state.selectRoute)
+  const focusStop = useFuel((state) => state.focusStop)
 
   if (jobError) {
     return (
@@ -24,14 +26,10 @@ export function FuelDock() {
   }
 
   if (!solution) {
-    return (
-      <div className="flex h-full items-center px-6 text-sm text-ink-soft">
-        Solved tanker routes appear here, drawn on the streets they drive.
-      </div>
-    )
+    return <div className="flex h-full items-center px-6 text-sm text-ink-soft">{copy.emptySolution}</div>
   }
 
-  const depotName = depot?.name ?? "Depot"
+  const depotName = depot?.name ?? copy.depot
 
   return (
     <motion.div
@@ -41,13 +39,14 @@ export function FuelDock() {
       transition={{ duration: 0.25 }}
     >
       <div>
-        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-ink-soft">Driving distance</p>
+        <p className="text-[11px] font-medium tracking-[0.16em] text-ink-soft">{copy.drivingDistance}</p>
         <p className="font-display text-5xl leading-none text-ink">{formatKm(solution.objective)}</p>
-        <p className="mt-1 text-xs text-ink-soft">kilometers</p>
+        <p className="mt-1 text-xs text-ink-soft">{copy.kilometers}</p>
         <div className="mt-3 flex flex-wrap gap-2">
-          <Badge tone={solution.feasible ? "ok" : "bad"}>{solution.feasible ? "Feasible" : "Infeasible"}</Badge>
-          <Badge>{solution.num_vehicles} tankers</Badge>
-          <Badge>{solution.runtime_s.toFixed(2)}s</Badge>
+          <Badge tone={solution.feasible ? "ok" : "bad"}>{solution.feasible ? copy.feasible : copy.infeasible}</Badge>
+          <Badge>
+            {solution.num_vehicles} {copy.tanker}
+          </Badge>
         </div>
       </div>
       <div className="min-h-0 overflow-auto">
@@ -68,41 +67,65 @@ export function FuelDock() {
             const color = active ? SELECTED_ROUTE : ROUTE_COLORS[index % ROUTE_COLORS.length]
             return (
               <li key={`${index}-${route.join("-")}`}>
-                <button
-                  type="button"
-                  onClick={() => selectRoute(active ? null : index)}
+                <div
                   className={cn(
-                    "w-full rounded-md border px-3 py-2 text-left",
+                    "w-full rounded-md border px-3 py-2",
                     active ? "border-ink bg-ink/[0.04]" : "border-line hover:border-ink/30",
                   )}
                 >
-                  <span className="flex items-center justify-between gap-3">
-                    <span className="flex items-center gap-2">
-                      <span className="inline-block size-2.5 rounded-full" style={{ background: color }} />
-                      <span className="text-sm font-medium">Tanker {index + 1}</span>
+                  <button
+                    type="button"
+                    onClick={() => selectRoute(active ? null : index)}
+                    className="w-full text-start"
+                  >
+                    <span className="flex items-center justify-between gap-3">
+                      <span className="flex items-center gap-2">
+                        <span className="inline-block size-2.5 rounded-full" style={{ background: color }} />
+                        <span className="text-sm font-medium">{tankerLabel(index + 1)}</span>
+                      </span>
+                      <span className="text-sm tabular-nums text-ink">
+                        {formatKm(solution.route_km?.[index])} {copy.kilometers}
+                      </span>
                     </span>
-                    <span className="text-sm tabular-nums text-ink">{formatKm(solution.route_km?.[index])} km</span>
-                  </span>
-                  <ol className="mt-2 space-y-1 border-l border-line pl-3">
-                    <StopRow name={depotName} when={`depart ${formatMinutes(clock.depart)}`} />
-                    {route.map((node, stop) => (
-                      <li key={`${node}-${stop}`} className="space-y-1">
-                        <p className="text-xs tabular-nums text-ink-soft">{formatKm(legs[stop])} km</p>
-                        <StopRow
-                          name={machines[node - 1]?.name ?? `Stop ${node}`}
-                          when={stopRange(clock.arrivals[stop], clock.leaves[stop])}
-                        />
-                      </li>
-                    ))}
+                  </button>
+                  <ol className="mt-2 space-y-1 border-s border-line ps-3">
+                    <li>
+                      <StopButton
+                        name={depotName}
+                        when={`${copy.depart} ${formatMinutes(clock.depart)}`}
+                        onClick={depot ? () => focusStop(depot.id, index) : undefined}
+                      />
+                    </li>
+                    {route.map((node, stop) => {
+                      const machine = machines[node - 1]
+                      return (
+                        <li key={`${node}-${stop}`} className="space-y-1">
+                          <p className="text-xs tabular-nums text-ink-soft">
+                            {formatKm(legs[stop])} {copy.kilometers}
+                          </p>
+                          <StopButton
+                            name={machine?.name ?? stopLabel(node)}
+                            when={stopRange(clock.arrivals[stop], clock.leaves[stop])}
+                            onClick={machine ? () => focusStop(machine.id, index) : undefined}
+                          />
+                        </li>
+                      )
+                    })}
                     <li className="space-y-1">
-                      <p className="text-xs tabular-nums text-ink-soft">{formatKm(legs[route.length])} km</p>
-                      <StopRow name={depotName} when={`return ${formatMinutes(clock.back)}`} />
+                      <p className="text-xs tabular-nums text-ink-soft">
+                        {formatKm(legs[route.length])} {copy.kilometers}
+                      </p>
+                      <StopButton
+                        name={depotName}
+                        when={`${copy.return} ${formatMinutes(clock.back)}`}
+                        onClick={depot ? () => focusStop(depot.id, index) : undefined}
+                      />
                     </li>
                   </ol>
                   <p className="mt-2 text-xs text-ink-soft">
-                    {path?.streets.length ? path.streets.join(", ") : "Unnamed roads"}
+                    {path?.streets.length ? path.streets.join("، ") : copy.unnamedRoads}
                   </p>
-                </button>
+                </div>
               </li>
             )
           })}
@@ -112,12 +135,12 @@ export function FuelDock() {
   )
 }
 
-function StopRow({ name, when }: { name: string; when: string }) {
+function StopButton({ name, when, onClick }: { name: string; when: string; onClick?: () => void }) {
   return (
-    <span className="flex items-baseline justify-between gap-3 text-sm">
+    <button type="button" onClick={onClick} disabled={!onClick} className="flex w-full items-baseline justify-between gap-3 text-start text-sm">
       <span className="truncate">{name}</span>
       <span className="shrink-0 tabular-nums text-ink-soft">{when}</span>
-    </span>
+    </button>
   )
 }
 

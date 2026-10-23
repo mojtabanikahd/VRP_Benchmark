@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from "react-resizable-panels"
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
+import { copy } from "./copy"
 import { FuelDock } from "./FuelDock"
 import { MarkerFields } from "./FuelForm"
 import { FuelMap } from "./FuelMap"
@@ -13,6 +14,8 @@ export function FuelApp() {
   const solution = useFuel((state) => state.solution)
   const jobError = useFuel((state) => state.jobError)
   const removeSelected = useFuel((state) => state.removeSelected)
+  const undo = useFuel((state) => state.undo)
+  const redo = useFuel((state) => state.redo)
   const selectedId = useFuel((state) => state.selectedId)
   const detailToken = useFuel((state) => state.detailToken)
   const focusPoint = useFuel((state) => state.focusPoint)
@@ -32,16 +35,30 @@ export function FuelApp() {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Delete" && event.key !== "Backspace") return
       const target = event.target
-      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) {
+      const typing =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      if ((event.ctrlKey || event.metaKey) && !typing && event.key.toLowerCase() === "z") {
+        event.preventDefault()
+        if (event.shiftKey) redo()
+        else undo()
         return
       }
+      if ((event.ctrlKey || event.metaKey) && !typing && event.key.toLowerCase() === "y") {
+        event.preventDefault()
+        redo()
+        return
+      }
+      if (typing) return
+      if (event.key !== "Delete" && event.key !== "Backspace") return
       removeSelected()
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [removeSelected])
+  }, [redo, removeSelected, undo])
 
   return (
     <PanelGroup direction="vertical" className="h-full">
@@ -58,8 +75,8 @@ export function FuelApp() {
           <Panel defaultSize={24} minSize={18} maxSize={40}>
             <Tabs value={tab} onValueChange={setTab}>
               <TabsList>
-                <TabsTrigger value="details">Details</TabsTrigger>
-                <TabsTrigger value="list">List</TabsTrigger>
+                <TabsTrigger value="details">{copy.details}</TabsTrigger>
+                <TabsTrigger value="list">{copy.list}</TabsTrigger>
               </TabsList>
               <TabsContent value="details">
                 {selectedId ? (
@@ -68,7 +85,7 @@ export function FuelApp() {
                   </div>
                 ) : (
                   <p className="p-4 text-sm leading-relaxed text-ink-soft">
-                    Select a depot or machine to edit its name, fuel demand, and refueling window.
+                    {copy.emptySelection}
                   </p>
                 )}
               </TabsContent>
@@ -105,7 +122,7 @@ function FuelList({ onSelect, onRemove }: { onSelect: (id: string) => void; onRe
             onClick={() => onSelect(depot.id)}
             onRemove={() => removeRow(depot.id)}
             label={depot.name}
-            meta="Depot"
+            meta={copy.depot}
           />
         </li>
       ) : null}
@@ -116,7 +133,7 @@ function FuelList({ onSelect, onRemove }: { onSelect: (id: string) => void; onRe
             onClick={() => onSelect(machine.id)}
             onRemove={() => removeRow(machine.id)}
             label={machine.name}
-            meta={`${machine.fuelL} L`}
+            meta={`${machine.fuelL} لیتر`}
           />
         </li>
       ))}
@@ -145,7 +162,7 @@ function ListButton({
           : "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-ink/5"
       }
     >
-      <button type="button" onClick={onClick} className="flex min-w-0 flex-1 items-baseline justify-between text-left">
+      <button type="button" onClick={onClick} className="flex min-w-0 flex-1 items-baseline justify-between text-start">
         <span className="truncate">{label}</span>
         <span className={active ? "text-paper/70" : "text-ink-soft"}>{meta}</span>
       </button>
@@ -157,7 +174,7 @@ function ListButton({
         }}
         className={active ? "text-xs text-paper/80 underline" : "text-xs text-ink-soft underline"}
       >
-        Remove
+        {copy.remove}
       </button>
     </div>
   )

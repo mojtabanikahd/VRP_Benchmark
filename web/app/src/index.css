@@ -3,6 +3,9 @@
 @import "@fontsource/geist/400.css";
 @import "@fontsource/geist/500.css";
 @import "@fontsource/geist/600.css";
+@import "@fontsource/vazirmatn/400.css";
+@import "@fontsource/vazirmatn/500.css";
+@import "@fontsource/vazirmatn/600.css";
 
 @theme {
   --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
@@ -97,4 +100,33 @@ body {
 
 .leaflet-tooltip.fuel-tip.leaflet-tooltip-right::before {
   border-right-color: #14181c;
+}
+
+.fuel-ui {
+  font-family: "Vazirmatn", sans-serif;
+}
+
+.fuel-ui .font-display {
+  font-family: "Vazirmatn", sans-serif;
+}
+
+.fuel-route {
+  stroke-dasharray: 10 14;
+  animation: fuel-flow 1.1s linear infinite;
+}
+
+.fuel-route.is-selected {
+  animation-duration: 0.55s;
+}
+
+@keyframes fuel-flow {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fuel-route {
+    animation: none;
+  }
 }

@@ -20,6 +20,7 @@ from web.api.fueling import (
     matrices_from_table,
     route_geometry,
     route_schedule,
+    validate_scenario,
 )
 from web.api.main import app
 
@@ -84,16 +85,74 @@ def _route() -> dict:
     }
 
 
-def test_route_schedule_records_arrival_before_the_window_wait():
+def test_route_schedule_delays_departure_until_the_window_opens():
     scenario = FuelScenario.model_validate(_scenario())
     travel = np.zeros((2, 2))
     travel[0, 1] = travel[1, 0] = 10
     clock = route_schedule(scenario, travel, [[1]])
-    assert clock["depart_min"] == pytest.approx([360])
-    assert clock["arrivals_min"][0] == pytest.approx([370])
-    # The machine window opens at 08:00, so refueling ends at 08:15.
+    # Leave at 07:50 so refueling starts at 08:00, not at the 06:10 raw arrival.
+    assert clock["depart_min"] == pytest.approx([470])
+    assert clock["arrivals_min"][0] == pytest.approx([480])
     assert clock["leaves_min"][0] == pytest.approx([495])
     assert clock["return_min"] == pytest.approx([505])
+
+
+def test_route_schedule_meets_an_afternoon_window_by_leaving_later():
+    payload = _scenario()
+    payload["machines"][0]["window_open_min"] = 15 * 60
+    payload["machines"][0]["window_close_min"] = 16 * 60
+    payload["machines"][0]["duration_min"] = 15
+    scenario = FuelScenario.model_validate(payload)
+    travel = np.zeros((2, 2))
+    travel[0, 1] = travel[1, 0] = 30
+    clock = route_schedule(scenario, travel, [[1]])
+    assert clock["depart_min"] == pytest.approx([15 * 60 - 30])
+    assert clock["arrivals_min"][0] == pytest.approx([15 * 60])
+    assert clock["leaves_min"][0] == pytest.approx([15 * 60 + 15])
+    assert clock["return_min"] == pytest.approx([15 * 60 + 45])
+
+
+def test_route_schedule_reports_service_start_when_a_later_stop_is_early():
+    payload = _scenario()
+    second = dict(payload["machines"][0])
+    second["name"] = "Second"
+    second["lat"] = 51.53
+    second["window_open_min"] = 8 * 60 + 30
+    second["duration_min"] = 10
+    payload["machines"].append(second)
+    scenario = FuelScenario.model_validate(payload)
+    travel = np.zeros((3, 3))
+    travel[0, 1] = travel[1, 0] = 10
+    travel[1, 2] = travel[2, 1] = 10
+    travel[0, 2] = travel[2, 0] = 20
+    clock = route_schedule(scenario, travel, [[1, 2]])
+    assert clock["arrivals_min"][0][0] == pytest.approx(8 * 60)
+    assert clock["leaves_min"][0][0] == pytest.approx(8 * 60 + 15)
+    assert clock["arrivals_min"][0][1] == pytest.approx(8 * 60 + 30)
+    assert clock["leaves_min"][0][1] == pytest.approx(8 * 60 + 40)
+
+
+def test_route_schedule_rejects_a_drive_that_misses_the_window():
+    payload = _scenario()
+    payload["depot"]["window_open_min"] = 15 * 60
+    payload["depot"]["window_close_min"] = 22 * 60
+    payload["machines"][0]["window_open_min"] = 15 * 60
+    payload["machines"][0]["window_close_min"] = 15 * 60 + 30
+    payload["machines"][0]["duration_min"] = 10
+    scenario = FuelScenario.model_validate(payload)
+    travel = np.zeros((2, 2))
+    travel[0, 1] = travel[1, 0] = 120
+    with pytest.raises(FuelError, match="refueling windows"):
+        route_schedule(scenario, travel, [[1]])
+
+
+def test_refueling_longer_than_the_window_is_rejected():
+    payload = _scenario()
+    payload["machines"][0]["window_open_min"] = 15 * 60
+    payload["machines"][0]["window_close_min"] = 16 * 60
+    payload["machines"][0]["duration_min"] = 90
+    with pytest.raises(FuelError, match="does not fit"):
+        validate_scenario(FuelScenario.model_validate(payload))
 
 
 def test_route_schedule_services_immediately_when_the_window_is_open():
@@ -179,7 +238,7 @@ def test_build_fuel_instance_is_single_depot_vrptw():
     assert list(instance.customers) == [1]
     assert int(instance.demands[1]) == 40
     assert instance.capacity == 200
-    assert instance.time_windows[1].tolist() == [480.0, 960.0]
+    assert instance.time_windows[1].tolist() == [480.0, 945.0]
     assert instance.service_times[1] == pytest.approx(15.0)
     assert instance.distance[0, 1] == pytest.approx(2.0)
     assert instance.travel_times is not None
@@ -238,12 +297,40 @@ def test_fuel_job_returns_the_osrm_street_path(monkeypatch: pytest.MonkeyPatch):
     assert result["paths"][0]["geometry"] == STREET
     assert result["paths"][0]["streets"] == ["High Street", "Yard Road", "Mill Lane"]
     assert result["paths"][0]["stops"] == result["routes"][0]
-    assert result["depart_min"][0] == pytest.approx(360)
-    assert result["arrivals_min"][0][0] == pytest.approx(370)
+    assert result["depart_min"][0] == pytest.approx(470)
+    assert result["arrivals_min"][0][0] == pytest.approx(480)
     assert result["leaves_min"][0][0] == pytest.approx(495)
     assert result["return_min"][0] == pytest.approx(505)
     assert result["leg_km"][0] == pytest.approx([2.0, 2.0])
     assert result["route_km"][0] == pytest.approx(4.0)
+
+
+def test_fuel_job_rejects_a_window_the_drive_cannot_reach(monkeypatch: pytest.MonkeyPatch):
+    def fake_get(url: str) -> dict:
+        if "/table/" in url:
+            return {
+                "code": "Ok",
+                "durations": [[0, 120 * 60], [120 * 60, 0]],
+                "distances": [[0, 10_000], [10_000, 0]],
+            }
+        return _route()
+
+    payload = _scenario()
+    payload["depot"]["window_open_min"] = 15 * 60
+    payload["depot"]["window_close_min"] = 22 * 60
+    payload["machines"][0]["window_open_min"] = 15 * 60
+    payload["machines"][0]["window_close_min"] = 15 * 60 + 30
+    payload["machines"][0]["duration_min"] = 10
+    monkeypatch.setattr("web.api.fueling._get_json", fake_get)
+    created = client.post(
+        "/api/fueling/jobs",
+        json={"scenario": payload, "solver": "pyvrp", "time_budget_s": 2, "seed": 0},
+    )
+    assert created.status_code == 200, created.text
+    record = _wait(created.json()["id"])
+    assert record["status"] == "error", record
+    assert record["result"] is None
+    assert "window" in record["error"].lower()
 
 
 def test_fuel_job_fails_when_the_street_path_is_missing(monkeypatch: pytest.MonkeyPatch):

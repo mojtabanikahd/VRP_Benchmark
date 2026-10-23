@@ -1,3 +1,4 @@
+import { copy, durationDoesNotFit, fuelExceedsTank, negativeDuration, noMachineType, wholeFuel, windowOrder } from "./copy"
 import type { FuelDepot, FuelMachine, MachineType, TankerType } from "./types"
 
 export function fuelIssues(input: {
@@ -9,28 +10,31 @@ export function fuelIssues(input: {
 }): string[] {
   const issues: string[] = []
   const tanker = input.tanker
-  if (!tanker) issues.push("Set the tanker")
+  if (!tanker) issues.push(copy.setTanker)
   else if (!Number.isInteger(tanker.capacityL) || tanker.capacityL < 1) {
-    issues.push("Tanker capacity must be a whole number of liters")
+    issues.push(copy.wholeCapacity)
   }
-  if (!input.depot) issues.push("Place a depot on the map")
-  if (input.machines.length === 0) issues.push("Place at least one machine")
+  if (!input.depot) issues.push(copy.placeDepot)
+  if (input.machines.length === 0) issues.push(copy.placeMachineIssue)
   if (input.depot && input.depot.windowOpenMin > input.depot.windowCloseMin) {
-    issues.push("Depot shift closes before it opens")
+    issues.push(copy.depotWindow)
   }
   const typeIds = new Set(input.machineTypes.map((item) => item.id))
   for (const machine of input.machines) {
-    if (!typeIds.has(machine.machineTypeId)) issues.push(`${machine.name} has no machine type`)
+    if (!typeIds.has(machine.machineTypeId)) issues.push(noMachineType(machine.name))
     if (machine.windowOpenMin > machine.windowCloseMin) {
-      issues.push(`${machine.name} window closes before it opens`)
+      issues.push(windowOrder(machine.name))
+    }
+    if (machine.durationMin > machine.windowCloseMin - machine.windowOpenMin) {
+      issues.push(durationDoesNotFit(machine.name))
     }
     if (!Number.isInteger(machine.fuelL) || machine.fuelL < 1) {
-      issues.push(`${machine.name} needs a whole-liter fuel demand`)
+      issues.push(wholeFuel(machine.name))
     } else if (tanker && machine.fuelL > tanker.capacityL) {
-      issues.push(`${machine.name} needs more fuel than the tanker holds`)
+      issues.push(fuelExceedsTank(machine.name))
     }
-    if (machine.durationMin < 0) issues.push(`${machine.name} has a negative refueling duration`)
+    if (machine.durationMin < 0) issues.push(negativeDuration(machine.name))
   }
-  if (!input.solver) issues.push("Choose a solver")
+  if (!input.solver) issues.push(copy.chooseSolver)
   return issues
 }

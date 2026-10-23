@@ -3,6 +3,7 @@ import { GeoJSON, MapContainer, Marker, TileLayer, useMap, useMapEvents, ZoomCon
 import L from "leaflet"
 
 import { ROUTE_COLORS, SELECTED_ROUTE } from "../scenario/types"
+import { copy } from "./copy"
 import { useFuel } from "./store"
 import { formatRange } from "./time"
 
@@ -24,9 +25,9 @@ export function FuelMap() {
   const mapEpoch = useFuel((state) => state.mapEpoch)
 
   return (
-    <div className="relative h-full w-full">
+    <div className="relative h-full w-full" dir="ltr">
       <MapContainer center={[20, 0]} zoom={3} className="absolute inset-0" zoomControl={false}>
-        <ZoomControl position="topright" />
+        <ZoomControl position="topleft" />
         <TileLayer attribution={OSM_ATTR} url={OSM} />
         <MapSize />
         <MapClicks />
@@ -36,15 +37,15 @@ export function FuelMap() {
         <MachineMarkers key={`machines-${mapEpoch}`} />
         <RoadLayer />
       </MapContainer>
-      <div className="absolute left-3 top-3 z-[500] flex gap-1 rounded-md border border-line bg-paper p-1 shadow-sm">
+      <div className="absolute right-3 top-3 z-[500] flex gap-1 rounded-md border border-line bg-paper p-1 shadow-sm">
         <Tool active={mode === "depot"} onClick={() => setMode("depot")}>
-          Set depot
+          {copy.setDepot}
         </Tool>
         <Tool active={mode === "machine"} onClick={() => setMode("machine")}>
-          Place machine
+          {copy.placeMachine}
         </Tool>
         <Tool active={mode === "select"} onClick={() => setMode("select")}>
-          Select
+          {copy.select}
         </Tool>
       </div>
     </div>
@@ -346,11 +347,17 @@ function RoadLayer() {
       {paths.map((path, index) => {
         const active = selectedRoute === index
         const color = active ? SELECTED_ROUTE : ROUTE_COLORS[index % ROUTE_COLORS.length]
+        const dim = selectedRoute !== null && !active
         return (
           <GeoJSON
             key={`${index}-${path.geometry.coordinates.length}-${active ? "on" : "off"}`}
             data={path.geometry}
-            style={{ color, weight: active ? 7 : 5, opacity: 0.92 }}
+            style={{
+              className: active ? "fuel-route is-selected" : "fuel-route",
+              color,
+              weight: active ? 7 : 5,
+              opacity: dim ? 0.28 : 0.95,
+            }}
             eventHandlers={{ click: () => selectRoute(active ? null : index) }}
           />
         )

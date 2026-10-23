@@ -3,6 +3,7 @@ import type { ReactNode } from "react"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
+import { copy } from "./copy"
 import { useFuel } from "./store"
 import { clockToMinutes, minutesToClock } from "./time"
 
@@ -24,21 +25,21 @@ export function MarkerFields({ id }: { id: string }) {
     return (
       <div className="space-y-3" onMouseDown={(event) => event.stopPropagation()}>
         <div className="flex items-start justify-between gap-2">
-          <Header eyebrow="Depot" title={depot.name} />
+          <Header eyebrow={copy.depot} title={depot.name} />
           <RemovePoint onRemove={removePoint} />
         </div>
-        <Field label="Name">
+        <Field label={copy.name}>
           <Input value={depot.name} onChange={(event) => updateDepot({ name: event.target.value })} />
         </Field>
         <div className="grid grid-cols-2 gap-2">
-          <Field label="Shift opens">
+          <Field label={copy.shiftOpens}>
             <Input
               type="time"
               value={minutesToClock(depot.windowOpenMin)}
               onChange={(event) => updateDepot({ windowOpenMin: clockToMinutes(event.target.value) })}
             />
           </Field>
-          <Field label="Shift closes">
+          <Field label={copy.shiftCloses}>
             <Input
               type="time"
               value={minutesToClock(depot.windowCloseMin)}
@@ -54,13 +55,13 @@ export function MarkerFields({ id }: { id: string }) {
   return (
     <div className="space-y-3" onMouseDown={(event) => event.stopPropagation()}>
       <div className="flex items-start justify-between gap-2">
-        <Header eyebrow="Machine" title={machine.name} />
+        <Header eyebrow={copy.machine} title={machine.name} />
         <RemovePoint onRemove={removePoint} />
       </div>
-      <Field label="Name">
+      <Field label={copy.name}>
         <Input value={machine.name} onChange={(event) => updateMachine(id, { name: event.target.value })} />
       </Field>
-      <Field label="Machine type">
+      <Field label={copy.machineType}>
         <select
           className="h-9 w-full rounded-md border border-line bg-paper px-2 text-sm"
           value={machine.machineTypeId}
@@ -80,7 +81,7 @@ export function MarkerFields({ id }: { id: string }) {
           ))}
         </select>
       </Field>
-      <Field label="Fuel demand (L)">
+      <Field label={copy.fuelDemand}>
         <Input
           type="number"
           min={1}
@@ -90,14 +91,14 @@ export function MarkerFields({ id }: { id: string }) {
         />
       </Field>
       <div className="grid grid-cols-2 gap-2">
-        <Field label="Window opens">
+        <Field label={copy.windowOpens}>
           <Input
             type="time"
             value={minutesToClock(machine.windowOpenMin)}
             onChange={(event) => updateMachine(id, { windowOpenMin: clockToMinutes(event.target.value) })}
           />
         </Field>
-        <Field label="Window closes">
+        <Field label={copy.windowCloses}>
           <Input
             type="time"
             value={minutesToClock(machine.windowCloseMin)}
@@ -105,7 +106,7 @@ export function MarkerFields({ id }: { id: string }) {
           />
         </Field>
       </div>
-      <Field label="Refueling duration (min)">
+      <Field label={copy.duration}>
         <Input
           type="number"
           min={0}
@@ -121,7 +122,7 @@ export function MarkerFields({ id }: { id: string }) {
 function RemovePoint({ onRemove }: { onRemove: () => void }) {
   return (
     <Button type="button" variant="outline" size="sm" onClick={onRemove}>
-      Remove
+      {copy.remove}
     </Button>
   )
 }
@@ -129,7 +130,7 @@ function RemovePoint({ onRemove }: { onRemove: () => void }) {
 function Header({ eyebrow, title }: { eyebrow: string; title: string }) {
   return (
     <div>
-      <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-ink-soft">{eyebrow}</p>
+      <p className="text-[11px] font-medium tracking-[0.14em] text-ink-soft">{eyebrow}</p>
       <p className="font-display text-2xl leading-none text-ink">{title}</p>
     </div>
   )
