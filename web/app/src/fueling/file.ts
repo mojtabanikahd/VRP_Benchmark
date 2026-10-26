@@ -1,8 +1,9 @@
 import { z } from "zod"
 
+import type { Variant } from "../scenario/types"
 import { copy, missingType, windowOrder } from "./copy"
 import { MAX_IMAGE_BYTES } from "./icons"
-import type { FuelFile } from "./store"
+import type { FuelFile, FuelProfile } from "./store"
 
 const imageSchema = z
   .string()
@@ -93,6 +94,26 @@ const fileV2Schema = z.object({
   tanker: tankerSchema,
   solver: solverField.nullable().optional().default(null),
   timeBudgetS: z.number().gt(0).lte(300).optional(),
+    seed: z
+    .preprocess((value) => {
+      if (typeof value !== "number" || !Number.isFinite(value)) return value
+      return Math.max(0, Math.round(value))
+    }, z.number().int().nonnegative())
+    .optional(),
+})
+
+const studioSchema = z.object({
+  kind: z.literal("studio"),
+  version: z.literal(1),
+  variant: z.enum(["CVRP", "VRPTW", "MDVRP"]),
+  name: label(copy.studioScenario),
+  machineTypes: z.array(machineTypeSchema).min(1),
+  tanker: tankerSchema,
+  depot: depotSchema.nullable(),
+  depots: z.array(depotSchema).default([]),
+  machines: z.array(machineSchema),
+  solver: solverField.nullable().optional().default(null),
+  timeBudgetS: z.number().gt(0).lte(300).optional(),
   seed: z
     .preprocess((value) => {
       if (typeof value !== "number" || !Number.isFinite(value)) return value
@@ -114,10 +135,12 @@ export function scenarioDocument(state: {
   return {
     kind: "fueling",
     version: 2,
+    variant: "VRPTW",
     name: state.name.trim() || "fueling",
     machineTypes: state.machineTypes,
     tanker: state.tanker,
     depot: state.depot,
+    depots: state.depot ? [state.depot] : [],
     machines: state.machines,
     solver: state.solver,
     timeBudgetS: state.timeBudgetS,
@@ -125,35 +148,67 @@ export function scenarioDocument(state: {
   }
 }
 
-export function downloadScenario(state: Parameters<typeof scenarioDocument>[0]) {
-  const document = scenarioDocument(state)
+export function downloadScenario(state: {
+  profile: FuelProfile
+  variant: Variant
+  name: string
+  machineTypes: FuelFile["machineTypes"]
+  tanker: FuelFile["tanker"]
+  depot: FuelFile["depot"]
+  depots: FuelFile["depots"]
+  machines: FuelFile["machines"]
+  solver: string | null
+  timeBudgetS: number
+  seed: number
+}) {
+  const document: FuelFile =
+    state.profile === "studio"
+      ? {
+          kind: "studio",
+          version: 1,
+          variant: state.variant,
+          name: state.name.trim() || copy.studioScenario,
+          machineTypes: state.machineTypes,
+          tanker: state.tanker,
+          depot: state.variant === "MDVRP" ? null : state.depot,
+          depots: state.variant === "MDVRP" ? state.depots : state.depot ? [state.depot] : [],
+          machines: state.machines,
+          solver: state.solver,
+          timeBudgetS: state.timeBudgetS,
+          seed: state.seed,
+        }
+      : scenarioDocument(state)
   const blob = new Blob([JSON.stringify(document, null, 2)], { type: "application/json" })
   const url = URL.createObjectURL(blob)
   const link = window.document.createElement("a")
-  const slug = document.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "fueling"
+  const slug = document.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || document.kind
   link.href = url
-  link.download = `${slug}.fueling.json`
+  link.download = `${slug}.${document.kind}.json`
   window.document.body.appendChild(link)
   link.click()
   link.remove()
   window.setTimeout(() => URL.revokeObjectURL(url), 1500)
 }
 
-export function parseScenarioText(text: string): FuelFile {
+export function parseScenarioText(text: string, profile: FuelProfile = "fueling"): FuelFile {
   let payload: unknown
   try {
     payload = JSON.parse(text.replace(/^\uFEFF/, "")) as unknown
   } catch {
     throw new Error(copy.notFuelFile)
   }
-  return parseScenarioFile(payload)
+  return parseScenarioFile(payload, profile)
 }
 
-export function parseScenarioFile(payload: unknown): FuelFile {
+export function parseScenarioFile(payload: unknown, profile: FuelProfile = "fueling"): FuelFile {
+  const kind = payload && typeof payload === "object" ? (payload as { kind?: unknown }).kind : undefined
+  if (profile === "fueling" && kind === "studio") throw new Error(copy.notFuelFile)
+  if (kind === "studio") return finish(parseStudio(payload))
   const version = payload && typeof payload === "object" ? (payload as { version?: unknown }).version : undefined
-  if (version === 1) return finish(parseV1(payload))
-  if (version === 2) return finish(parseV2(payload))
-  throw new Error(copy.notFuelFile)
+  const file = version === 1 ? parseV1(payload) : version === 2 ? parseV2(payload) : null
+  if (!file) throw new Error(copy.notFuelFile)
+  if (profile === "studio") return finish({ ...file, kind: "studio", variant: "VRPTW" })
+  return finish(file)
 }
 
 function parseV1(payload: unknown): FuelFile {
@@ -175,6 +230,8 @@ function parseV1(payload: unknown): FuelFile {
     solver: null,
     timeBudgetS: null,
     seed: null,
+    variant: "VRPTW",
+    depots: file.depot ? [file.depot] : [],
   }
 }
 
@@ -195,21 +252,50 @@ function parseV2(payload: unknown): FuelFile {
     solver: file.solver,
     timeBudgetS: file.timeBudgetS ?? null,
     seed: file.seed ?? null,
+    variant: "VRPTW",
+    depots: file.depot ? [file.depot] : [],
+  }
+}
+
+function parseStudio(payload: unknown): FuelFile {
+  const parsed = studioSchema.safeParse(payload)
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message ?? copy.notFuelFile)
+  }
+  const file = parsed.data
+  const depots = file.variant === "MDVRP" ? file.depots : file.depot ? [file.depot] : file.depots.slice(0, 1)
+  return {
+    kind: "studio",
+    version: 1,
+    variant: file.variant,
+    name: file.name,
+    machineTypes: file.machineTypes,
+    tanker: file.tanker,
+    depot: depots[0] ?? null,
+    depots,
+    machines: file.machines,
+    solver: file.solver,
+    timeBudgetS: file.timeBudgetS ?? null,
+    seed: file.seed ?? null,
   }
 }
 
 function finish(file: FuelFile): FuelFile {
+  const timed = file.kind === "fueling" || file.variant === "VRPTW"
   const typeIds = new Set(file.machineTypes.map((item) => item.id))
   for (const machine of file.machines) {
     if (!typeIds.has(machine.machineTypeId)) {
       throw new Error(missingType(machine.name))
     }
-    if (machine.windowOpenMin > machine.windowCloseMin) {
+    if (timed && machine.windowOpenMin > machine.windowCloseMin) {
       throw new Error(windowOrder(machine.name))
     }
   }
-  if (file.depot && file.depot.windowOpenMin > file.depot.windowCloseMin) {
-    throw new Error(copy.depotWindow)
+  const depots = file.depots.length > 0 ? file.depots : file.depot ? [file.depot] : []
+  if (timed) {
+    for (const depot of depots) {
+      if (depot.windowOpenMin > depot.windowCloseMin) throw new Error(copy.depotWindow)
+    }
   }
   return file
 }

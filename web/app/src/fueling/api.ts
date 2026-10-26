@@ -23,8 +23,8 @@ export async function searchAddresses(query: string): Promise<FuelPlace[]> {
   return body.places
 }
 
-export async function fetchFuelCatalog(): Promise<{ solvers: FuelSolverInfo[] }> {
-  const response = await fetch("/api/fueling/catalog")
+export async function fetchFuelCatalog(variant = "VRPTW"): Promise<{ solvers: FuelSolverInfo[] }> {
+  const response = await fetch(`/api/fueling/catalog?variant=${encodeURIComponent(variant)}`)
   if (!response.ok) throw new Error(await readError(response))
   return response.json() as Promise<{ solvers: FuelSolverInfo[] }>
 }

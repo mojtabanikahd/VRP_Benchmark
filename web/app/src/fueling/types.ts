@@ -44,6 +44,7 @@ export interface RoadPath {
 
 export interface FuelResult {
   routes: number[][]
+  route_depots?: number[]
   objective: number
   solver_objective: number
   num_vehicles: number

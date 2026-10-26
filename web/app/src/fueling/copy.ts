@@ -1,8 +1,12 @@
 export const copy = {
   appTitle: "سوخت‌رسانی",
   eyebrow: "سوخت‌رسانی",
+  studioTitle: "استودیو",
+  studioEyebrow: "استودیو",
   scenario: "سناریو",
   defaultScenario: "سوخت‌رسانی بدون نام",
+  studioScenario: "سناریوی بدون نام",
+  variant: "گونه",
   machineTypes: "انواع ماشین",
   addMachineType: "افزودن نوع ماشین",
   machine: "ماشین",
@@ -28,6 +32,7 @@ export const copy = {
   details: "جزئیات",
   list: "فهرست",
   emptySelection: "برای ویرایش نام، میزان سوخت و پنجرهٔ سوخت‌گیری، یک انبار یا ماشین را انتخاب کنید.",
+  emptySelectionPlain: "برای ویرایش نام و میزان سوخت، یک انبار یا ماشین را انتخاب کنید.",
   remove: "حذف",
   name: "نام",
   shiftOpens: "شروع شیفت",
@@ -56,6 +61,7 @@ export const copy = {
   setTanker: "تانکر را مشخص کنید",
   wholeCapacity: "ظرفیت تانکر باید عدد صحیح لیتر باشد",
   placeDepot: "انبار را روی نقشه بگذارید",
+  needTwoDepots: "برای چند انبار دست‌کم دو انبار روی نقشه بگذارید",
   placeMachineIssue: "دست‌کم یک ماشین بگذارید",
   depotWindow: "شیفت انبار پیش از شروعش تمام می‌شود",
   chooseSolver: "حل‌کننده را انتخاب کنید",
@@ -114,6 +120,8 @@ export function stopLabel(node: number) {
 export function persianError(message: string): string {
   const text = message.trim()
   if (!text) return copy.solverFailed
+  if (text.includes("two depots")) return copy.needTwoDepots
+  if (text.includes("place a depot")) return copy.placeDepot
   if (text.includes("refueling windows")) return "هیچ برنامه‌ای پنجرهٔ زمانی سوخت‌گیری را رعایت نمی‌کند"
   if (text.includes("does not fit")) return "مدت سوخت‌گیری در پنجرهٔ زمانی جا نمی‌شود"
   if (text.includes("tank capacity")) return "سوخت درخواستی از ظرفیت تانکر بیشتر است"

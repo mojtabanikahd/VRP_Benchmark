@@ -5,7 +5,7 @@ import L from "leaflet"
 import { ROUTE_COLORS, SELECTED_ROUTE } from "../scenario/types"
 import { AddressSearch } from "./AddressSearch"
 import { copy } from "./copy"
-import { useFuel } from "./store"
+import { useFuel, useFuelApi, usesManyDepots, usesTime } from "./store"
 import { formatRange } from "./time"
 
 import type { FuelPlace } from "./api"
@@ -45,7 +45,7 @@ export function FuelMap() {
         <FocusPoint />
         <ShowFoundArea found={found} />
         {found ? <SearchPin place={found.place} /> : null}
-        <DepotMarker key={`depot-${mapEpoch}`} />
+        <DepotMarkers key={`depot-${mapEpoch}`} />
         <MachineMarkers key={`machines-${mapEpoch}`} />
         <RoadLayer />
       </MapContainer>
@@ -144,37 +144,52 @@ function SearchPin({ place }: { place: FuelPlace }) {
 
 function FocusPoint() {
   const map = useMap()
+  const api = useFuelApi()
   const focusToken = useFuel((state) => state.focusToken)
   useEffect(() => {
-    const { focusId, depot, machines } = useFuel.getState()
+    const { focusId, depot, depots, machines } = api.getState()
     if (!focusId) return
-    const point = depot?.id === focusId ? depot : machines.find((machine) => machine.id === focusId)
+    const point =
+      depots.find((item) => item.id === focusId) ??
+      (depot?.id === focusId ? depot : undefined) ??
+      machines.find((machine) => machine.id === focusId)
     if (!point) return
     map.flyTo([point.lat, point.lng], Math.max(map.getZoom(), 15))
-  }, [focusToken, map])
+  }, [api, focusToken, map])
   return null
 }
 
 function FitMarkers() {
   const map = useMap()
+  const api = useFuelApi()
   const fitToken = useFuel((state) => state.fitToken)
   useEffect(() => {
-    const { depot, machines } = useFuel.getState()
+    const { depot, depots, machines } = api.getState()
     const points: [number, number][] = []
-    if (depot) points.push([depot.lat, depot.lng])
+    const homes = depots.length > 0 ? depots : depot ? [depot] : []
+    for (const home of homes) points.push([home.lat, home.lng])
     for (const machine of machines) points.push([machine.lat, machine.lng])
     if (points.length === 0) return
     if (points.length === 1) map.setView(points[0], 14)
     else map.fitBounds(points, { padding: [48, 48] })
-  }, [fitToken, map])
+  }, [api, fitToken, map])
   return null
 }
 
-function DepotMarker() {
+function DepotMarkers() {
   const depot = useFuel((state) => state.depot)
+  const depots = useFuel((state) => state.depots)
+  const many = useFuel((state) => usesManyDepots(state))
   const image = useFuel((state) => state.tanker.image)
-  if (!depot || !image) return null
-  return <PlacedMarker id={depot.id} name={depot.name} lat={depot.lat} lng={depot.lng} image={image} kind="depot" />
+  const points = many ? depots : depot ? [depot] : []
+  if (!image) return null
+  return (
+    <>
+      {points.map((point) => (
+        <PlacedMarker key={point.id} id={point.id} name={point.name} lat={point.lat} lng={point.lng} image={image} kind="depot" />
+      ))}
+    </>
+  )
 }
 
 function MachineMarkers() {
@@ -182,6 +197,8 @@ function MachineMarkers() {
   const machineTypes = useFuel((state) => state.machineTypes)
   const solution = useFuel((state) => state.solution)
   const selectedRoute = useFuel((state) => state.selectedRoute)
+  const timed = useFuel((state) => usesTime(state))
+  const depotCount = useFuel((state) => (usesManyDepots(state) ? Math.max(state.depots.length, 1) : 1))
   const numbers = useMemo(() => visitNumbers(solution?.routes ?? [], selectedRoute), [solution, selectedRoute])
   const visits = useMemo(
     () => visitWindows(solution?.routes ?? [], solution?.arrivals_min ?? [], solution?.leaves_min ?? [], selectedRoute),
@@ -192,8 +209,8 @@ function MachineMarkers() {
       {machines.map((machine, index) => {
         const image = machineTypes.find((item) => item.id === machine.machineTypeId)?.image
         if (!image) return null
-        const visit = numbers.get(index + 1)
-        const window = visits.get(index + 1)
+        const visit = numbers.get(index + depotCount)
+        const window = timed ? visits.get(index + depotCount) : undefined
         return (
           <PlacedMarker
             key={machine.id}
@@ -253,7 +270,7 @@ function PlacedMarker({
           click: () => inspect(id),
           dragend: (event) => {
             const next = event.target.getLatLng()
-            if (kind === "depot") moveDepot(next.lat, next.lng)
+            if (kind === "depot") moveDepot(id, next.lat, next.lng)
             else moveMachine(id, next.lat, next.lng)
           },
         }}

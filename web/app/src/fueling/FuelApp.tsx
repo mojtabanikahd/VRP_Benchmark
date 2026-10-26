@@ -7,7 +7,7 @@ import { FuelDock } from "./FuelDock"
 import { MarkerFields } from "./FuelForm"
 import { FuelMap } from "./FuelMap"
 import { FuelRail } from "./FuelRail"
-import { useFuel } from "./store"
+import { useFuel, usesManyDepots, usesTime } from "./store"
 
 export function FuelApp() {
   const dockRef = useRef<ImperativePanelHandle>(null)
@@ -17,6 +17,7 @@ export function FuelApp() {
   const undo = useFuel((state) => state.undo)
   const redo = useFuel((state) => state.redo)
   const selectedId = useFuel((state) => state.selectedId)
+  const timed = useFuel((state) => usesTime(state))
   const detailToken = useFuel((state) => state.detailToken)
   const focusPoint = useFuel((state) => state.focusPoint)
   const [tab, setTab] = useState("details")
@@ -85,7 +86,7 @@ export function FuelApp() {
                   </div>
                 ) : (
                   <p className="p-4 text-sm leading-relaxed text-ink-soft">
-                    {copy.emptySelection}
+                    {timed ? copy.emptySelection : copy.emptySelectionPlain}
                   </p>
                 )}
               </TabsContent>
@@ -106,26 +107,29 @@ export function FuelApp() {
 
 function FuelList({ onSelect, onRemove }: { onSelect: (id: string) => void; onRemove: () => void }) {
   const depot = useFuel((state) => state.depot)
+  const depots = useFuel((state) => state.depots)
+  const many = useFuel((state) => usesManyDepots(state))
   const machines = useFuel((state) => state.machines)
   const selectedId = useFuel((state) => state.selectedId)
   const select = useFuel((state) => state.select)
+  const points = many ? depots : depot ? [depot] : []
   const removeRow = (id: string) => {
     select(id)
     onRemove()
   }
   return (
     <ul className="space-y-1 p-2">
-      {depot ? (
-        <li>
+      {points.map((point) => (
+        <li key={point.id}>
           <ListButton
-            active={selectedId === depot.id}
-            onClick={() => onSelect(depot.id)}
-            onRemove={() => removeRow(depot.id)}
-            label={depot.name}
+            active={selectedId === point.id}
+            onClick={() => onSelect(point.id)}
+            onRemove={() => removeRow(point.id)}
+            label={point.name}
             meta={copy.depot}
           />
         </li>
-      ) : null}
+      ))}
       {machines.map((machine) => (
         <li key={machine.id}>
           <ListButton

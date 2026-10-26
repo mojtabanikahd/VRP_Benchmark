@@ -1,9 +1,11 @@
-"""Fueling scenarios: a single-depot VRPTW solved on driving roads.
+"""Road-network fueling scenarios.
 
-Machines need an integer number of liters inside a refueling window. One tanker
-type supplies the tank capacity. OpenStreetMap driving distances (kilometers)
-are the objective; driving durations (minutes) enforce the windows. Solved
-routes are drawn from OSRM's full road geometry, never from straight chords.
+The fueling tab is a single-depot VRPTW: machines need an integer number of
+liters inside a refueling window, and driving durations enforce those windows.
+Studio reuses the same map and fleet, but only VRPTW keeps the clock. CVRP is
+one depot and capacity; MDVRP adds depots and still ignores time. OpenStreetMap
+driving distances (kilometers) are the objective. Solved routes are drawn from
+OSRM's full road geometry, never from straight chords.
 """
 
 from __future__ import annotations
@@ -14,19 +16,22 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 from pydantic import BaseModel, Field, field_validator
 
 from vrpbench.core import evaluate
-from vrpbench.core.instance import VRPTW, Instance
+from vrpbench.core.instance import CVRP, MDVRP, VRPTW, Instance
 from vrpbench.solvers import get_solver
 from vrpbench.solvers.base import SolverError
 
 FUEL_SOLVERS = ("pyvrp", "ortools")
+FUEL_VARIANTS = (CVRP, VRPTW, MDVRP)
+FuelVariant = Literal["CVRP", "VRPTW", "MDVRP"]
 _MAX_MACHINES = 99
 _DAY_MINUTES = 24 * 60
+_METERS_PER_KM = 1000.0
 _WINDOW_ERROR = "No schedule meets the refueling windows"
 _CLOCK_EPS = 1e-6
 
@@ -56,8 +61,8 @@ class FuelDepot(BaseModel):
     name: str
     lat: float
     lng: float
-    window_open_min: float
-    window_close_min: float
+    window_open_min: float = 0
+    window_close_min: float = _DAY_MINUTES
 
     @field_validator("name")
     @classmethod
@@ -74,9 +79,9 @@ class FuelMachine(BaseModel):
     lat: float
     lng: float
     fuel_l: int = Field(ge=1)
-    window_open_min: float
-    window_close_min: float
-    duration_min: float = Field(ge=0)
+    window_open_min: float = 0
+    window_close_min: float = _DAY_MINUTES
+    duration_min: float = Field(default=0, ge=0)
 
     @field_validator("name", "machine_type_id")
     @classmethod
@@ -89,7 +94,9 @@ class FuelMachine(BaseModel):
 
 class FuelScenario(BaseModel):
     name: str
-    depot: FuelDepot
+    variant: FuelVariant = VRPTW
+    depot: FuelDepot | None = None
+    depots: list[FuelDepot] = Field(default_factory=list)
     machines: list[FuelMachine]
     machine_types: list[FuelType]
     tanker_types: list[TankerType]
@@ -123,8 +130,18 @@ def osrm_base() -> str:
     return os.environ.get("OSRM_BASE_URL", "https://router.project-osrm.org").rstrip("/")
 
 
+def _scenario_depots(scenario: FuelScenario) -> list[FuelDepot]:
+    if scenario.variant == MDVRP:
+        return list(scenario.depots)
+    if scenario.depot is None:
+        raise FuelError("place a depot")
+    return [scenario.depot]
+
+
 def validate_scenario(scenario: FuelScenario) -> FuelScenario:
-    """Reject a scenario that cannot become a single-depot VRPTW."""
+    """Reject a scenario that cannot become the selected road-network variant."""
+    if scenario.variant not in FUEL_VARIANTS:
+        raise FuelError(f"unsupported variant {scenario.variant!r}; expected one of {FUEL_VARIANTS}")
     if not scenario.machine_types:
         raise FuelError("define at least one machine type")
     if not scenario.tanker_types:
@@ -139,21 +156,28 @@ def validate_scenario(scenario: FuelScenario) -> FuelScenario:
     tanker = next((item for item in scenario.tanker_types if item.id == scenario.tanker_type_id), None)
     if tanker is None:
         raise FuelError(f"unknown tanker type {scenario.tanker_type_id!r}")
-    _check_point("depot", scenario.depot.lat, scenario.depot.lng)
-    _check_window("depot shift", scenario.depot.window_open_min, scenario.depot.window_close_min)
+    depots = _scenario_depots(scenario)
+    if scenario.variant == MDVRP and len(depots) < 2:
+        raise FuelError("MDVRP requires at least two depots")
+    timed = scenario.variant == VRPTW
+    for depot in depots:
+        _check_point(depot.name, depot.lat, depot.lng)
+        if timed:
+            _check_window("depot shift", depot.window_open_min, depot.window_close_min)
     for machine in scenario.machines:
         if machine.machine_type_id not in machine_ids:
             raise FuelError(f"machine {machine.name!r} uses an unknown machine type")
         _check_point(machine.name, machine.lat, machine.lng)
-        _check_window(
-            f"{machine.name} refueling window",
-            machine.window_open_min,
-            machine.window_close_min,
-        )
-        if not np.isfinite(machine.duration_min):
-            raise FuelError(f"{machine.name} refueling duration must be finite")
-        if machine.duration_min > machine.window_close_min - machine.window_open_min:
-            raise FuelError(f"{machine.name} refueling duration does not fit in its window")
+        if timed:
+            _check_window(
+                f"{machine.name} refueling window",
+                machine.window_open_min,
+                machine.window_close_min,
+            )
+            if not np.isfinite(machine.duration_min):
+                raise FuelError(f"{machine.name} refueling duration must be finite")
+            if machine.duration_min > machine.window_close_min - machine.window_open_min:
+                raise FuelError(f"{machine.name} refueling duration does not fit in its window")
         if machine.fuel_l > tanker.capacity_l:
             raise FuelError(
                 f"{machine.name} fuel demand {machine.fuel_l} L exceeds "
@@ -162,7 +186,9 @@ def validate_scenario(scenario: FuelScenario) -> FuelScenario:
     return scenario
 
 
-def ensure_fuel_solver(name: str) -> None:
+def ensure_fuel_solver(name: str, variant: str = VRPTW) -> None:
+    if variant not in FUEL_VARIANTS:
+        raise FuelError(f"unsupported variant {variant!r}; expected one of {FUEL_VARIANTS}")
     if name not in FUEL_SOLVERS:
         raise FuelError(
             f"solver {name!r} does not solve fueling scenarios; expected one of {FUEL_SOLVERS}"
@@ -171,18 +197,20 @@ def ensure_fuel_solver(name: str) -> None:
         solver = get_solver(name)
     except KeyError as exc:
         raise FuelError(str(exc)) from exc
-    if VRPTW not in solver.supported_variants:
-        raise FuelError(f"solver {name!r} does not support VRPTW")
+    if variant not in solver.supported_variants:
+        raise FuelError(f"solver {name!r} does not support {variant}")
 
 
-def fuel_catalog() -> dict:
+def fuel_catalog(variant: str = VRPTW) -> dict:
+    if variant not in FUEL_VARIANTS:
+        raise FuelError(f"unsupported variant {variant!r}; expected one of {FUEL_VARIANTS}")
     solvers = []
     for name in FUEL_SOLVERS:
         try:
             solver = get_solver(name)
         except KeyError:
             continue
-        if VRPTW not in solver.supported_variants:
+        if variant not in solver.supported_variants:
             continue
         solvers.append({"name": name, "version": solver.version()})
     return {"solvers": solvers}
@@ -191,43 +219,60 @@ def fuel_catalog() -> dict:
 def build_fuel_instance(
     scenario: FuelScenario, distance_km: np.ndarray, travel_min: np.ndarray
 ) -> Instance:
-    """Build the VRPTW instance. Matrices are authoritative; coordinates are geographic."""
+    """Build the road instance. Matrices are authoritative; coordinates are geographic.
+
+    ``travel_min`` is stored only for VRPTW. CVRP and MDVRP keep the distance
+    matrix and leave every time field empty.
+    """
     scenario = validate_scenario(scenario)
     tanker = next(item for item in scenario.tanker_types if item.id == scenario.tanker_type_id)
-    nodes = [scenario.depot, *scenario.machines]
+    depots = _scenario_depots(scenario)
+    nodes = [*depots, *scenario.machines]
     coords = np.asarray([[node.lng, node.lat] for node in nodes], dtype=float)
-    demands = np.asarray([0, *[machine.fuel_l for machine in scenario.machines]], dtype=int)
-    # Latest start is close minus service, so refueling finishes inside the window.
-    windows = np.asarray(
-        [
-            [float(scenario.depot.window_open_min), float(scenario.depot.window_close_min)],
-            *[
-                [
-                    float(machine.window_open_min),
-                    float(machine.window_close_min) - float(machine.duration_min),
-                ]
-                for machine in scenario.machines
-            ],
-        ],
-        dtype=float,
+    demands = np.asarray(
+        [0] * len(depots) + [machine.fuel_l for machine in scenario.machines],
+        dtype=int,
     )
-    service = np.asarray(
-        [0.0, *[machine.duration_min for machine in scenario.machines]],
-        dtype=float,
+    common = dict(
+        name=scenario.name,
+        num_nodes=len(nodes),
+        coords=coords,
+        demands=demands,
+        capacity=int(tanker.capacity_l),
+        distance=np.asarray(distance_km, dtype=float),
+        depot=0,
     )
     try:
-        return Instance(
-            name=scenario.name,
-            variant=VRPTW,
-            num_nodes=len(nodes),
-            coords=coords,
-            demands=demands,
-            capacity=int(tanker.capacity_l),
-            distance=np.asarray(distance_km, dtype=float),
-            time_windows=windows,
-            service_times=service,
-            travel_times=np.asarray(travel_min, dtype=float),
-        )
+        if scenario.variant == VRPTW:
+            depot = depots[0]
+            # Latest start is close minus service, so refueling finishes inside the window.
+            windows = np.asarray(
+                [
+                    [float(depot.window_open_min), float(depot.window_close_min)],
+                    *[
+                        [
+                            float(machine.window_open_min),
+                            float(machine.window_close_min) - float(machine.duration_min),
+                        ]
+                        for machine in scenario.machines
+                    ],
+                ],
+                dtype=float,
+            )
+            service = np.asarray(
+                [0.0, *[machine.duration_min for machine in scenario.machines]],
+                dtype=float,
+            )
+            return Instance(
+                variant=VRPTW,
+                time_windows=windows,
+                service_times=service,
+                travel_times=np.asarray(travel_min, dtype=float),
+                **common,
+            )
+        if scenario.variant == MDVRP:
+            return Instance(variant=MDVRP, depot_indices=tuple(range(len(depots))), **common)
+        return Instance(variant=CVRP, **common)
     except ValueError as exc:
         raise FuelError(str(exc)) from exc
 
@@ -304,9 +349,12 @@ def route_schedule(
     arrivals_min: list[list[float]] = []
     leaves_min: list[list[float]] = []
     return_min: list[float] = []
-    opens = [float(scenario.depot.window_open_min)]
+    depot = scenario.depot
+    if depot is None:
+        raise FuelError("place a depot")
+    opens = [float(depot.window_open_min)]
     opens.extend(float(machine.window_open_min) for machine in scenario.machines)
-    closes = [float(scenario.depot.window_close_min)]
+    closes = [float(depot.window_close_min)]
     closes.extend(float(machine.window_close_min) for machine in scenario.machines)
     service = [0.0]
     service.extend(float(machine.duration_min) for machine in scenario.machines)
@@ -367,21 +415,27 @@ def _replay(
     return arrivals, leaves, clock
 
 
-def route_distances(distance_km: np.ndarray, routes: list[list[int]]) -> dict[str, list[Any]]:
-    """Driving kilometers for each hop, including the return to the depot."""
+def route_distances(
+    distance_km: np.ndarray,
+    routes: list[list[int]],
+    route_depots: list[int] | None = None,
+) -> dict[str, list[Any]]:
+    """Driving kilometers for each hop, including the return to that route's depot."""
+    homes = list(route_depots or [])
     leg_km: list[list[float]] = []
     route_km: list[float] = []
-    for route in routes:
+    for index, route in enumerate(routes):
+        home = homes[index] if index < len(homes) else 0
         if not route:
             leg_km.append([])
             route_km.append(0.0)
             continue
-        prev = 0
+        prev = home
         hops: list[float] = []
         for node in route:
             hops.append(float(distance_km[prev, node]))
             prev = node
-        hops.append(float(distance_km[prev, 0]))
+        hops.append(float(distance_km[prev, home]))
         leg_km.append(hops)
         route_km.append(float(sum(hops)))
     return {"leg_km": leg_km, "route_km": route_km}
@@ -390,10 +444,17 @@ def route_distances(distance_km: np.ndarray, routes: list[list[int]]) -> dict[st
 def solve_fuel_job(work: FuelWork) -> dict[str, Any]:
     """Fetch the driving matrix, solve, then attach one street path per route."""
     scenario = validate_scenario(work.scenario)
-    points = [(scenario.depot.lng, scenario.depot.lat)]
+    depots = _scenario_depots(scenario)
+    points = [(depot.lng, depot.lat) for depot in depots]
     points.extend((machine.lng, machine.lat) for machine in scenario.machines)
     distance_km, travel_min = matrices_from_table(fetch_table(points), len(points))
-    instance = build_fuel_instance(scenario, distance_km, travel_min)
+    # CVRP and MDVRP scale distance by 1, so the matrix is stored in meters and
+    # the reported objective is converted back to kilometers. VRPTW already
+    # splits kilometers and minutes inside the solver.
+    timed = scenario.variant == VRPTW
+    instance_distance = distance_km if timed else distance_km * _METERS_PER_KM
+    instance = build_fuel_instance(scenario, instance_distance, travel_min)
+    scale_out = 1.0 if timed else _METERS_PER_KM
     solver = get_solver(work.solver)
     try:
         solution = solver.solve(
@@ -405,16 +466,26 @@ def solve_fuel_job(work: FuelWork) -> dict[str, Any]:
         raise FuelError(str(exc)) from exc
     checked = evaluate.verify(instance, solution)
     if not checked.feasible:
-        if _misses_window(checked.violations):
+        if timed and _misses_window(checked.violations):
             raise FuelError(_WINDOW_ERROR)
         raise FuelError("; ".join(checked.violations))
-    schedule = route_schedule(scenario, travel_min, solution.routes)
-    distances = route_distances(distance_km, solution.routes)
+    if timed:
+        schedule = route_schedule(scenario, travel_min, solution.routes)
+    else:
+        schedule = {
+            "depart_min": [],
+            "arrivals_min": [],
+            "leaves_min": [],
+            "return_min": [],
+        }
+    route_depots = list(solution.route_depots) if scenario.variant == MDVRP else []
+    distances = route_distances(distance_km, solution.routes, route_depots)
     paths = []
     for index, route in enumerate(solution.routes):
         if not route:
             continue
-        ordered = [points[0], *[points[node] for node in route], points[0]]
+        home = route_depots[index] if index < len(route_depots) else 0
+        ordered = [points[home], *[points[node] for node in route], points[home]]
         try:
             geometry, streets = route_geometry(fetch_route(ordered))
         except FuelError as exc:
@@ -422,12 +493,12 @@ def solve_fuel_job(work: FuelWork) -> dict[str, Any]:
         paths.append({"stops": list(route), "geometry": geometry, "streets": streets})
     return {
         "routes": solution.routes,
-        "route_depots": [],
-        "objective": checked.objective,
-        "solver_objective": solution.objective,
+        "route_depots": route_depots,
+        "objective": checked.objective / scale_out,
+        "solver_objective": solution.objective / scale_out,
         "num_vehicles": checked.num_vehicles,
         "runtime_s": solution.runtime_s,
-        "obj_mismatch": checked.obj_mismatch,
+        "obj_mismatch": checked.obj_mismatch / scale_out,
         "feasible": checked.feasible,
         "violations": list(checked.violations),
         "solver_version": solver.version(),

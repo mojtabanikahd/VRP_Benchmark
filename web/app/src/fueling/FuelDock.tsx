@@ -4,14 +4,17 @@ import { Badge } from "../components/ui/badge"
 import { cn } from "../lib/utils"
 import { ROUTE_COLORS, SELECTED_ROUTE } from "../scenario/types"
 import { copy, stopLabel, tankerLabel } from "./copy"
-import { useFuel } from "./store"
+import { useFuel, usesManyDepots, usesTime } from "./store"
 import { formatMinutes, formatRange } from "./time"
 import type { FuelResult } from "./types"
 
 export function FuelDock() {
   const solution = useFuel((state) => state.solution)
   const jobError = useFuel((state) => state.jobError)
+  const timed = useFuel((state) => usesTime(state))
+  const many = useFuel((state) => usesManyDepots(state))
   const depot = useFuel((state) => state.depot)
+  const depots = useFuel((state) => state.depots)
   const machines = useFuel((state) => state.machines)
   const selectedRoute = useFuel((state) => state.selectedRoute)
   const selectRoute = useFuel((state) => state.selectRoute)
@@ -29,7 +32,8 @@ export function FuelDock() {
     return <div className="flex h-full items-center px-6 text-sm text-ink-soft">{copy.emptySolution}</div>
   }
 
-  const depotName = depot?.name ?? copy.depot
+  const points = many ? depots : depot ? [depot] : []
+  const depotCount = Math.max(points.length, 1)
 
   return (
     <motion.div
@@ -64,6 +68,8 @@ export function FuelDock() {
             const active = selectedRoute === index
             const clock = routeClock(solution, index)
             const legs = solution.leg_km?.[index] ?? []
+            const routeDepot = points[solution.route_depots?.[index] ?? 0] ?? points[0]
+            const depotName = routeDepot?.name ?? copy.depot
             const color = active ? SELECTED_ROUTE : ROUTE_COLORS[index % ROUTE_COLORS.length]
             return (
               <li key={`${index}-${route.join("-")}`}>
@@ -81,7 +87,10 @@ export function FuelDock() {
                     <span className="flex items-center justify-between gap-3">
                       <span className="flex items-center gap-2">
                         <span className="inline-block size-2.5 rounded-full" style={{ background: color }} />
-                        <span className="text-sm font-medium">{tankerLabel(index + 1)}</span>
+                        <span className="text-sm font-medium">
+                          {tankerLabel(index + 1)}
+                          {many && routeDepot ? ` · ${routeDepot.name}` : ""}
+                        </span>
                       </span>
                       <span className="text-sm tabular-nums text-ink">
                         {formatKm(solution.route_km?.[index])} {copy.kilometers}
@@ -92,12 +101,12 @@ export function FuelDock() {
                     <li>
                       <StopButton
                         name={depotName}
-                        when={`${copy.depart} ${formatMinutes(clock.depart)}`}
-                        onClick={depot ? () => focusStop(depot.id, index) : undefined}
+                        when={timed ? `${copy.depart} ${formatMinutes(clock.depart)}` : ""}
+                        onClick={routeDepot ? () => focusStop(routeDepot.id, index) : undefined}
                       />
                     </li>
                     {route.map((node, stop) => {
-                      const machine = machines[node - 1]
+                      const machine = machines[node - depotCount]
                       return (
                         <li key={`${node}-${stop}`} className="space-y-1">
                           <p className="text-xs tabular-nums text-ink-soft">
@@ -105,7 +114,7 @@ export function FuelDock() {
                           </p>
                           <StopButton
                             name={machine?.name ?? stopLabel(node)}
-                            when={stopRange(clock.arrivals[stop], clock.leaves[stop])}
+                            when={timed ? stopRange(clock.arrivals[stop], clock.leaves[stop]) : ""}
                             onClick={machine ? () => focusStop(machine.id, index) : undefined}
                           />
                         </li>
@@ -117,8 +126,8 @@ export function FuelDock() {
                       </p>
                       <StopButton
                         name={depotName}
-                        when={`${copy.return} ${formatMinutes(clock.back)}`}
-                        onClick={depot ? () => focusStop(depot.id, index) : undefined}
+                        when={timed ? `${copy.return} ${formatMinutes(clock.back)}` : ""}
+                        onClick={routeDepot ? () => focusStop(routeDepot.id, index) : undefined}
                       />
                     </li>
                   </ol>

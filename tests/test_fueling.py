@@ -18,6 +18,7 @@ from web.api.fueling import (
     FuelScenario,
     build_fuel_instance,
     matrices_from_table,
+    route_distances,
     route_geometry,
     route_schedule,
     search_places,
@@ -434,6 +435,117 @@ def test_fuel_job_fails_when_the_street_path_is_missing(monkeypatch: pytest.Monk
     assert record["status"] == "error"
     assert record["result"] is None
     assert "street path" in record["error"]
+
+
+def test_build_cvrp_ignores_time_windows():
+    payload = _scenario()
+    payload["variant"] = "CVRP"
+    payload["depot"]["window_open_min"] = 100
+    payload["depot"]["window_close_min"] = 10
+    distance, travel = matrices_from_table(_table(), 2)
+    instance = build_fuel_instance(FuelScenario.model_validate(payload), distance, travel)
+    assert instance.variant == "CVRP"
+    assert instance.time_windows is None
+    assert instance.service_times is None
+    assert instance.travel_times is None
+    assert instance.depot_indices is None
+    assert list(instance.customers) == [1]
+
+
+def test_mdvrp_requires_two_depots():
+    payload = _scenario()
+    payload["variant"] = "MDVRP"
+    payload["depots"] = [payload["depot"]]
+    payload["depot"] = None
+    with pytest.raises(FuelError, match="two depots"):
+        validate_scenario(FuelScenario.model_validate(payload))
+
+
+def test_build_mdvrp_puts_depots_first_without_time():
+    payload = _scenario()
+    payload["variant"] = "MDVRP"
+    second = dict(payload["depot"])
+    second["name"] = "North"
+    second["lat"] = 51.51
+    payload["depots"] = [payload["depot"], second]
+    payload["depot"] = None
+    distance = np.zeros((3, 3))
+    travel = np.zeros((3, 3))
+    instance = build_fuel_instance(FuelScenario.model_validate(payload), distance, travel)
+    assert instance.variant == "MDVRP"
+    assert instance.depot_indices == (0, 1)
+    assert list(instance.customers) == [2]
+    assert instance.time_windows is None
+    assert instance.travel_times is None
+    assert int(instance.demands[2]) == 40
+
+
+def test_route_distances_return_to_the_assigned_depot():
+    distance = np.array([[0.0, 1.0, 5.0], [1.0, 0.0, 2.0], [5.0, 2.0, 0.0]])
+    assert route_distances(distance, [[2]], [1])["route_km"] == pytest.approx([4.0])
+    assert route_distances(distance, [[2]])["leg_km"][0] == pytest.approx([5.0, 5.0])
+
+
+def test_cvrp_job_reports_kilometers_without_a_clock(monkeypatch: pytest.MonkeyPatch):
+    def fake_get(url: str) -> dict:
+        if "/table/" in url:
+            return _table()
+        if "/route/" in url:
+            return _route()
+        raise AssertionError(url)
+
+    payload = _scenario()
+    payload["variant"] = "CVRP"
+    monkeypatch.setattr("web.api.fueling._get_json", fake_get)
+    created = client.post(
+        "/api/fueling/jobs",
+        json={"scenario": payload, "solver": "pyvrp", "time_budget_s": 2, "seed": 0},
+    )
+    assert created.status_code == 200, created.text
+    record = _wait(created.json()["id"])
+    assert record["status"] == "ok", record
+    result = record["result"]
+    assert result["depart_min"] == []
+    assert result["arrivals_min"] == []
+    assert result["route_depots"] == []
+    assert result["objective"] == pytest.approx(4.0, abs=1e-2)
+    assert result["obj_mismatch"] == pytest.approx(0.0, abs=1e-2)
+    assert result["paths"][0]["geometry"] == STREET
+
+
+def test_mdvrp_job_assigns_a_depot_and_skips_the_clock(monkeypatch: pytest.MonkeyPatch):
+    def fake_get(url: str) -> dict:
+        if "/table/" in url:
+            return {
+                "code": "Ok",
+                "durations": [[0, 60, 600], [60, 0, 120], [600, 120, 0]],
+                "distances": [[0, 1000, 5000], [1000, 0, 2000], [5000, 2000, 0]],
+            }
+        if "/route/" in url:
+            return _route()
+        raise AssertionError(url)
+
+    payload = _scenario()
+    payload["variant"] = "MDVRP"
+    second = dict(payload["depot"])
+    second["name"] = "North"
+    second["lat"] = 51.51
+    payload["depots"] = [payload["depot"], second]
+    payload["depot"] = None
+    monkeypatch.setattr("web.api.fueling._get_json", fake_get)
+    created = client.post(
+        "/api/fueling/jobs",
+        json={"scenario": payload, "solver": "pyvrp", "time_budget_s": 2, "seed": 0},
+    )
+    assert created.status_code == 200, created.text
+    record = _wait(created.json()["id"])
+    assert record["status"] == "ok", record
+    result = record["result"]
+    assert result["depart_min"] == []
+    assert result["route_depots"]
+    assert result["route_depots"][0] in (0, 1)
+    assert result["obj_mismatch"] == pytest.approx(0.0, abs=1e-2)
+    assert result["paths"][0]["stops"] == result["routes"][0]
 
 
 def _wait(job_id: str) -> dict:

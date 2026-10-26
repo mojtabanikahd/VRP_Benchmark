@@ -77,7 +77,7 @@ class JobRunner:
 
     def submit_fuel(self, request: FuelJobRequest) -> JobRecord:
         validate_scenario(request.scenario)
-        ensure_fuel_solver(request.solver)
+        ensure_fuel_solver(request.solver, request.scenario.variant)
         job = _Job(
             fuel=FuelWork(
                 scenario=request.scenario,

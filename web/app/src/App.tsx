@@ -1,24 +1,13 @@
-import { Component, useEffect, useRef, useState, type ReactNode } from "react"
-import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from "react-resizable-panels"
+import { Component, useState, type ReactNode } from "react"
 
-import { Inspector } from "./inspector/Inspector"
-import { NodeGrid } from "./grid/NodeGrid"
-import { EuclideanPlane } from "./plane/EuclideanPlane"
-import { ResultDock } from "./dock/ResultDock"
 import { FuelApp } from "./fueling/FuelApp"
-import { Rail } from "./shell/Rail"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs"
-import { useStudio } from "./scenario/store"
+import { FuelStoreProvider, fuelStore, studioStore } from "./fueling/store"
 
 export function App() {
   const [mode, setMode] = useState<"studio" | "fueling">("studio")
-  const fueling = mode === "fueling"
+  const store = mode === "studio" ? studioStore : fuelStore
   return (
-    <div
-      className={fueling ? "fuel-ui flex h-dvh flex-col" : "flex h-dvh flex-col"}
-      dir={fueling ? "rtl" : "ltr"}
-      lang={fueling ? "fa" : "en"}
-    >
+    <div className="fuel-ui flex h-dvh flex-col" dir="rtl" lang="fa">
       <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line bg-paper px-4">
         <p className="font-display text-xl leading-none text-ink">VRP Studio</p>
         <div className="flex gap-1">
@@ -31,7 +20,11 @@ export function App() {
         </div>
       </header>
       <div className="min-h-0 flex-1">
-        <ErrorBoundary key={mode}>{mode === "studio" ? <StudioWorkspace /> : <FuelApp />}</ErrorBoundary>
+        <ErrorBoundary key={mode}>
+          <FuelStoreProvider store={store}>
+            <FuelApp />
+          </FuelStoreProvider>
+        </ErrorBoundary>
       </div>
     </div>
   )
@@ -77,66 +70,5 @@ function ModeButton({
     >
       {children}
     </button>
-  )
-}
-
-function StudioWorkspace() {
-  const dockRef = useRef<ImperativePanelHandle>(null)
-  const solution = useStudio((state) => state.solution)
-  const jobError = useStudio((state) => state.jobError)
-  const removeSelected = useStudio((state) => state.removeSelected)
-
-  useEffect(() => {
-    dockRef.current?.collapse()
-  }, [])
-
-  useEffect(() => {
-    if (solution || jobError) dockRef.current?.expand()
-  }, [jobError, solution])
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Delete" && event.key !== "Backspace") return
-      const target = event.target
-      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return
-      removeSelected()
-    }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [removeSelected])
-
-  return (
-    <PanelGroup direction="vertical" className="h-full">
-      <Panel defaultSize={78} minSize={48}>
-        <PanelGroup direction="horizontal">
-          <Panel defaultSize={22} minSize={16} maxSize={34}>
-            <Rail />
-          </Panel>
-          <PanelResizeHandle className="w-px bg-line transition-colors hover:bg-copper/50" />
-          <Panel defaultSize={54} minSize={30}>
-            <EuclideanPlane />
-          </Panel>
-          <PanelResizeHandle className="w-px bg-line transition-colors hover:bg-copper/50" />
-          <Panel defaultSize={24} minSize={18} maxSize={40}>
-            <Tabs defaultValue="inspector">
-              <TabsList>
-                <TabsTrigger value="inspector">Inspector</TabsTrigger>
-                <TabsTrigger value="nodes">Nodes</TabsTrigger>
-              </TabsList>
-              <TabsContent value="inspector">
-                <Inspector />
-              </TabsContent>
-              <TabsContent value="nodes">
-                <NodeGrid />
-              </TabsContent>
-            </Tabs>
-          </Panel>
-        </PanelGroup>
-      </Panel>
-      <PanelResizeHandle className="h-px bg-line transition-colors hover:bg-copper/50" />
-      <Panel ref={dockRef} defaultSize={22} minSize={14} collapsible collapsedSize={0}>
-        <ResultDock />
-      </Panel>
-    </PanelGroup>
   )
 }

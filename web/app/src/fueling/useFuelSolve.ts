@@ -3,19 +3,17 @@ import { useEffect, useState } from "react"
 
 import { createFuelJob, fetchFuelJob } from "./api"
 import { copy, persianError } from "./copy"
-import { fuelPayload, useFuel } from "./store"
+import { fuelPayload, useFuel, useFuelApi } from "./store"
 
 export function useFuelSolve() {
+  const api = useFuelApi()
   const clearResult = useFuel((state) => state.clearResult)
   const setSolution = useFuel((state) => state.setSolution)
   const setJobError = useFuel((state) => state.setJobError)
   const [jobId, setJobId] = useState<string | null>(null)
 
   const mutation = useMutation({
-    mutationFn: async () => {
-      const state = useFuel.getState()
-      return createFuelJob(fuelPayload(state))
-    },
+    mutationFn: async () => createFuelJob(fuelPayload(api.getState())),
     onSuccess: (job) => setJobId(job.id),
     onError: (reason: unknown) => {
       setJobError(persianError(reason instanceof Error ? reason.message : copy.solverFailed))

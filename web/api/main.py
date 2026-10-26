@@ -71,8 +71,11 @@ async def upload_instance(
 
 
 @app.get("/api/fueling/catalog")
-def read_fuel_catalog() -> dict:
-    return fuel_catalog()
+def read_fuel_catalog(variant: str = "VRPTW") -> dict:
+    try:
+        return fuel_catalog(variant)
+    except FuelError as exc:
+        raise _http_error(exc) from exc
 
 
 @app.get("/api/fueling/geocode")

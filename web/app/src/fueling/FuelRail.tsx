@@ -7,19 +7,25 @@ import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
 import { Slider } from "../components/ui/slider"
 import { cn } from "../lib/utils"
+import { VariantToggle } from "../components/ui/variant-toggle"
 import { fetchFuelCatalog } from "./api"
 import { copy } from "./copy"
 import { downloadScenario, parseScenarioText } from "./file"
 import { readImageFile } from "./icons"
 import { fuelIssues } from "./issues"
-import { useFuel } from "./store"
+import { useFuel, usesManyDepots, usesTime } from "./store"
 import { useFuelSolve } from "./useFuelSolve"
 
 export function FuelRail() {
+  const profile = useFuel((state) => state.profile)
+  const variant = useFuel((state) => state.variant)
+  const timed = useFuel((state) => usesTime(state))
+  const manyDepots = useFuel((state) => usesManyDepots(state))
   const name = useFuel((state) => state.name)
   const machineTypes = useFuel((state) => state.machineTypes)
   const tanker = useFuel((state) => state.tanker)
   const depot = useFuel((state) => state.depot)
+  const depots = useFuel((state) => state.depots)
   const machines = useFuel((state) => state.machines)
   const solver = useFuel((state) => state.solver)
   const timeBudgetS = useFuel((state) => state.timeBudgetS)
@@ -28,6 +34,7 @@ export function FuelRail() {
   const canUndo = useFuel((state) => state.canUndo)
   const canRedo = useFuel((state) => state.canRedo)
   const setName = useFuel((state) => state.setName)
+  const setVariant = useFuel((state) => state.setVariant)
   const setSolver = useFuel((state) => state.setSolver)
   const ensureSolver = useFuel((state) => state.ensureSolver)
   const undo = useFuel((state) => state.undo)
@@ -42,9 +49,13 @@ export function FuelRail() {
   const loadFile = useFuel((state) => state.loadFile)
   const setFileError = useFuel((state) => state.setFileError)
   const fileRef = useRef<HTMLInputElement>(null)
-  const catalog = useQuery({ queryKey: ["fuel-catalog"], queryFn: fetchFuelCatalog })
+  const catalogVariant = profile === "studio" ? variant : "VRPTW"
+  const catalog = useQuery({
+    queryKey: ["fuel-catalog", catalogVariant],
+    queryFn: () => fetchFuelCatalog(catalogVariant),
+  })
   const { solve, running } = useFuelSolve()
-  const issues = fuelIssues({ depot, machines, machineTypes, tanker, solver })
+  const issues = fuelIssues({ depot, depots, machines, machineTypes, tanker, solver, timed, manyDepots })
 
   const solverNames = catalog.data?.solvers.map((item) => item.name).join("\n") ?? ""
   useEffect(() => {
@@ -57,14 +68,24 @@ export function FuelRail() {
   return (
     <div className="flex h-full min-h-0 flex-col bg-paper">
       <header className="border-b border-line px-4 py-4">
-        <p className="text-[11px] font-medium tracking-[0.18em] text-copper">{copy.eyebrow}</p>
-        <h1 className="font-display text-3xl leading-none text-ink">{copy.appTitle}</h1>
+        <p className="text-[11px] font-medium tracking-[0.18em] text-copper">
+          {profile === "studio" ? copy.studioEyebrow : copy.eyebrow}
+        </p>
+        <h1 className="font-display text-3xl leading-none text-ink">
+          {profile === "studio" ? copy.studioTitle : copy.appTitle}
+        </h1>
       </header>
       <div className="min-h-0 flex-1 space-y-5 overflow-auto px-4 py-4">
         <section className="space-y-2">
           <Label htmlFor="fuel-name">{copy.scenario}</Label>
           <Input id="fuel-name" value={name} onChange={(event) => setName(event.target.value)} />
         </section>
+        {profile === "studio" ? (
+          <section className="space-y-2">
+            <Label>{copy.variant}</Label>
+            <VariantToggle value={variant} onChange={setVariant} />
+          </section>
+        ) : null}
         <TypeSection
           title={copy.machineTypes}
           onAdd={addMachineType}
@@ -79,7 +100,7 @@ export function FuelRail() {
               durationMin={item.durationMin}
               onName={(value) => updateMachineType(item.id, { name: value })}
               onFuel={(value) => updateMachineType(item.id, { fuelL: wholeLiters(value) })}
-              onDuration={(value) => updateMachineType(item.id, { durationMin: minutes(value) })}
+              onDuration={timed ? (value) => updateMachineType(item.id, { durationMin: minutes(value) }) : undefined}
               onImage={(image) => updateMachineType(item.id, { image })}
               onRemove={machineTypes.length > 1 ? () => removeMachineType(item.id) : undefined}
               onImageError={setFileError}
@@ -142,7 +163,19 @@ export function FuelRail() {
             type="button"
             variant="outline"
             onClick={() =>
-              downloadScenario({ name, machineTypes, tanker, depot, machines, solver, timeBudgetS, seed })
+              downloadScenario({
+                profile,
+                variant,
+                name,
+                machineTypes,
+                tanker,
+                depot,
+                depots,
+                machines,
+                solver,
+                timeBudgetS,
+                seed,
+              })
             }
           >
             <Download className="size-4" />
@@ -163,7 +196,7 @@ export function FuelRail() {
               if (!file) return
               void file
                 .text()
-                .then((text) => parseScenarioText(text))
+                .then((text) => parseScenarioText(text, profile))
                 .then(loadFile)
                 .catch((reason: unknown) => {
                   setFileError(reason instanceof Error ? reason.message : copy.loadFailed)
