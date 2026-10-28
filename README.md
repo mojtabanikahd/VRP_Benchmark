@@ -1,183 +1,379 @@
 ﻿# vrpbench
 
-A fast, reproducible benchmarking harness for **CVRP**, **VRPTW**, **MDVRP**
-(multi-depot), **VRPMPD** (mixed pickup & delivery), **PVRP** (periodic VRP), and
-**SDVRP** (Split Delivery VRP) that compares complete solvers on *final
-solution quality + runtime* only.
+**English** · [فارسی](README.fa.md)
 
-Bundled solvers: **PyVRP** (CVRP + VRPTW + MDVRP + VRPMPD), **OR-Tools** (CVRP + VRPTW +
-MDVRP + VRPMPD), **VROOM** (CVRP + VRPTW + MDVRP + VRPMPD), **VRPSolverEasy** (CVRP +
-VRPTW â€” exact BCP via BaPCod; MDVRP, VRPMPD, PVRP, and SDVRP not supported), **PVRPSolver**
-wrapping any of the three heuristic solvers (`pvrp_pyvrp`, `pvrp_ortools`, `pvrp_vroom`)
-for PVRP via ALNS over day-combination assignments, plus **AASA-PyVRP**,
-**AASA-VROOM**, and the externally provisioned **Alkaid-SDVRP** executable for
-SDVRP. A future custom solver plugs in as one adapter file + one registry entry.
+A reproducible benchmarking harness for the vehicle routing problem. It runs complete solvers on the same instances, under the same time budget, and scores every solution itself. The comparison is final solution quality and runtime.
 
-## Install
+The harness covers six variants:
 
-```powershell
-python -m venv .venv
-.venv\Scripts\python.exe -m pip install -r requirements.txt
+| Variant | Problem |
+| --- | --- |
+| **CVRP** | Capacitated VRP. One depot, one visit per customer, route load at most the vehicle capacity. |
+| **VRPTW** | VRP with time windows. Service at each customer must start and finish inside that customer's window. |
+| **MDVRP** | Multi-depot VRP. Any customer may be served from any depot; the solver chooses. |
+| **VRPMPD** | Mixed pickup and delivery. Each customer is either a delivery or a pickup, and the load must stay inside capacity after every stop. |
+| **PVRP** | Periodic VRP. Each customer is visited on an allowed subset of days, and each day is routed separately. |
+| **SDVRP** | Split-delivery VRP on the DIMACS R1 corpus. A customer may be served by more than one route, and the delivered quantities must sum to the demand. |
+
+An interactive front end for building and solving a scenario lives in [VRP Route Studio](web/README.md) ([فارسی](web/README.fa.md)).
+
+## Contents
+
+- [How the system works](#how-the-system-works)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Run a benchmark](#run-a-benchmark)
+- [Results, resume, and parallel runs](#results-resume-and-parallel-runs)
+- [Reports](#reports)
+- [Experiment configuration](#experiment-configuration)
+- [Solvers](#solvers)
+- [Datasets and best-known solutions](#datasets-and-best-known-solutions)
+- [How solutions are checked](#how-solutions-are-checked)
+- [Repository layout](#repository-layout)
+- [Tests](#tests)
+
+## How the system works
+
+An experiment is a YAML file. It names the solvers, the random seeds, the time budget, and the instance files. The runner expands that file into a grid of cells. One cell is one instance, one solver, and one seed.
+
+```text
+experiment YAML
+    -> runner (one cell = instance x solver x seed)
+        -> loader        builds an Instance from the file
+        -> solver        returns a Solution within the time budget
+        -> evaluator     recomputes distance and checks feasibility
+        -> result store  appends one row to results/results.csv
 ```
 
-`requirements.txt` contains a single `-e .[dev]` line, so pip installs the
-`vrpbench` package in editable mode together with all runtime and development
-dependencies declared in `pyproject.toml`. `pyproject.toml` is the single
-source of truth for dependencies; `requirements.txt` is just the install
-entry-point.
+Five packages do this work:
 
-> **VRPSolverEasy (exact solver):** the pip package does not bundle the BaPCod shared
-> library. See [BAPCOD_SETUP.md](BAPCOD_SETUP.md) for the one-time binary copy step
-> required before `vrpsolvereasy` cells will run.
+| Package | Role |
+| --- | --- |
+| `vrpbench/core` | The shared `Instance` and `Solution` types, and the independent evaluator. |
+| `vrpbench/datasets` | Parsers for each instance format, and the best-known-solution table. |
+| `vrpbench/solvers` | One adapter per solver, plus the registry a new solver plugs into. |
+| `vrpbench/runner` | YAML loading, the cell grid, resume, and parallel workers. |
+| `vrpbench/results` | Incremental CSV output, and an optional JSON dump of routes. |
+
+The evaluator is the authority for the recorded objective. Each adapter may report its own cost, and `obj_mismatch` is the difference between that report and the recomputed distance. A correct adapter stays near zero.
+
+A new solver is one adapter that follows the `Solver` protocol, plus one entry in `vrpbench/solvers/__init__.py`. The runner, the CSV schema, and the evaluator stay as they are.
+
+`pyproject.toml` is the dependency list. `requirements.txt` contains a single line, `-e .[dev]`, which installs this repository in editable mode together with the development extra (pytest).
+
+## Requirements
+
+| Requirement | Version | Used for |
+| --- | --- | --- |
+| Python | 3.11 or newer | The harness, every bundled solver, and the web API. |
+| pip | Current (the installer upgrades it) | Package installation. |
+| Git | Any current release | Cloning the repository. |
+| Node.js | 20 or newer | The web studio only. See [web/README.md](web/README.md). |
+
+The PyPI packages `pyvrp`, `ortools`, `pyvroom`, and `VRPSolverEasy` publish wheels for Windows, Linux, and macOS, so a C++ compiler is not required for the default install.
+
+Two solvers need something the wheels do not ship:
+
+- **VRPSolverEasy** needs the BaPCod shared library. CVRP and VRPTW runs that list `vrpsolvereasy` fail until [that library is copied in](#optional-vrpsolvereasy-and-bapcod).
+- **Alkaid-SDVRP** is an external executable. SDVRP runs that list `alkaid_sdvrp` need it on the machine and `ALKAID_SDVRP_EXECUTABLE` set in the same shell. See [ALKAID_SETUP.md](ALKAID_SETUP.md).
+
+PyVRP, OR-Tools, and VROOM need no extra binaries.
+
+## Installation
+
+Run every command from the repository root, the directory that contains `pyproject.toml`.
+
+Check the interpreter first:
+
+```bash
+python3 --version
+```
+
+On Windows, if `python3` is not on `PATH`:
+
+```powershell
+py -3 --version
+```
+
+The reported version must be 3.11 or newer. If the system Python is older, install a current one and create the virtual environment with that interpreter. The sections below name a concrete installer for each operating system.
+
+### Windows
+
+1. Install Python 3.11 or newer from [python.org](https://www.python.org/downloads/windows/). In the installer, enable **Add python.exe to PATH**. A current Python from `winget install Python.Python.3.12` is the same requirement.
+2. Open **PowerShell** in the repository root.
+
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+Calling `.venv\Scripts\python.exe` does not require activating the environment, which avoids PowerShell execution-policy prompts. To put `python` and `vrpbench` on the path of the current window:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+If Windows refuses to run that script, allow local scripts for the current user and try again:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+Command Prompt uses `.venv\Scripts\activate.bat` instead of `Activate.ps1`.
+
+`run_all_benchmarks.sh` is a Bash script. Run it from [Git Bash](https://git-scm.com/download/win) or from WSL, or run the five full configs yourself in PowerShell (listed under [Run a benchmark](#run-a-benchmark)).
+
+### Linux
+
+Debian, Ubuntu, and their derivatives need the venv module as its own package:
+
+```bash
+sudo apt update
+sudo apt install -y python3 python3-venv python3-pip git
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+Fedora, RHEL, and related distributions:
+
+```bash
+sudo dnf install -y python3 python3-pip git
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+`source .venv/bin/activate` lasts for that terminal. A new terminal needs it again. Without activation, call `.venv/bin/python` directly.
+
+### macOS
+
+Install the Xcode command-line tools once (Git, and a compiler if a wheel ever has to be built locally):
+
+```bash
+xcode-select --install
+```
+
+Install Python 3.11 or newer with [Homebrew](https://brew.sh/):
+
+```bash
+brew install python@3.12
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+The python.org macOS installer works as well. Create the virtual environment with that `python3`, not with the older `/usr/bin/python3` shipped by some macOS releases.
+
+Apple silicon and Intel need their own wheels. Create the virtual environment on the machine that will run the benchmarks so pip selects the matching builds. The same rule applies to the BaPCod binaries below: download the macOS archive that matches the machine.
+
+`run_all_benchmarks.sh` uses `nproc` when it is present. macOS does not provide `nproc`, so the script falls back to one worker unless you pass a count:
+
+```bash
+chmod +x run_all_benchmarks.sh
+./run_all_benchmarks.sh --threads "$(sysctl -n hw.ncpu)"
+```
+
+### Confirm the install
+
+With the virtual environment active (or by calling its interpreter directly):
+
+```bash
+python -c "import vrpbench, pyvrp, ortools, pyvroom; print('vrpbench', vrpbench.__version__)"
+python -m pytest -q
+```
+
+`vrpbench 0.1.0` and a quiet pytest run mean the harness and the three heuristic solvers import. `vrpsolvereasy` imports with the rest of the package; it only fails later, at solve time, when the BaPCod library is absent.
+
+The editable install also adds a `vrpbench` command:
+
+```bash
+vrpbench --config experiments/smoke.yaml
+```
+
+`python -m vrpbench.cli --config experiments/smoke.yaml` is the same entry point.
+
+### Optional: VRPSolverEasy and BaPCod
+
+`VRPSolverEasy` on PyPI is a Python wrapper. The native library (`bapcod-shared.dll` on Windows, `.so` on Linux, `.dylib` on macOS) is distributed separately by the BaPCod project.
+
+1. Download the free build for your operating system from [bapcod.math.u-bordeaux.fr](https://bapcod.math.u-bordeaux.fr/). The free build uses COIN-OR CLP and is enough for CVRP and VRPTW in this harness.
+2. Find the empty platform directory inside the virtual environment:
+
+```bash
+python -c "import VRPSolverEasy, pathlib; print(pathlib.Path(VRPSolverEasy.__file__).resolve().parent / 'lib')"
+```
+
+3. Copy the matching folder from the archive into that `lib` directory:
+
+| Operating system | Folder inside the BaPCod archive | Destination under `lib/` |
+| --- | --- | --- |
+| Windows | `Windows` | `lib/Windows` |
+| Linux | `Linux` | `lib/Linux` |
+| macOS | `Darwin` | `lib/Darwin` |
+
+On Windows the destination is usually `.venv\Lib\site-packages\VRPSolverEasy\lib\Windows`. On Linux and macOS it is `.venv/lib/python3.x/site-packages/VRPSolverEasy/lib/<platform>`. Trust the one-liner above if those guesses differ.
+
+4. Check that the library loads:
+
+```bash
+python -c "from VRPSolverEasy.src import solver; solver.Model(); print('BaPCod loaded')"
+```
+
+Copy Windows binaries only onto Windows, Linux binaries only onto Linux, and the Darwin build only onto macOS. A library built for another operating system, or for the other CPU architecture, fails to load. Details, the academic CPLEX build, and error text are in [BAPCOD_SETUP.md](BAPCOD_SETUP.md).
+
+### Optional: Alkaid-SDVRP
+
+`alkaid_sdvrp` runs the official Alkaid-SDVRP 1.1 executable. This repository does not vendor that source or binary.
+
+Build the `standalone` target from [HUST-Smart/Alkaid-SDVRP](https://github.com/HUST-Smart/Alkaid-SDVRP) with CMake and a C++17 compiler, then point the harness at the executable **in the same terminal** that starts the benchmark.
+
+Windows (PowerShell), after the Rtools 4.4 build described in [ALKAID_SETUP.md](ALKAID_SETUP.md):
+
+```powershell
+$env:ALKAID_SDVRP_EXECUTABLE = "C:\path\to\AlkaidSD.exe"
+```
+
+Linux and macOS:
+
+```bash
+export ALKAID_SDVRP_EXECUTABLE=/path/to/AlkaidSD
+```
+
+A value set in another window is invisible to the benchmark. macOS uses the same CMake Release build as Linux; the compiler is the one installed by the Xcode command-line tools.
+
+### Optional: the web studio
+
+The studio and the fueling map need the `web` extra and Node.js 20 or newer. Installation for each operating system is in [web/README.md](web/README.md).
+
+```bash
+python -m pip install -e ".[web]"
+```
+
+On Windows PowerShell the quotes are required so the square brackets are not treated as a wildcard.
 
 ## Run a benchmark
 
-```powershell
-# Quick smoke test â€” PyVRP + OR-Tools on one CVRP and one VRPTW instance
-.venv\Scripts\python.exe -m vrpbench.cli --config experiments/smoke.yaml
-
-# MDVRP smoke â€” PyVRP + OR-Tools + VROOM on small Cordeau multi-depot instances
-.venv\Scripts\python.exe -m vrpbench.cli --config experiments/mdvrp_smoke.yaml
-
-# VRPMPD smoke â€” PyVRP + OR-Tools + VROOM on two Salhi-Nagy S instances
-.venv\Scripts\python.exe -m vrpbench.cli --config experiments/vrpmpd_smoke.yaml
-
-# PVRP smoke â€” three PVRP wrappers on one old (no duration limit) + one new (duration limit) instance
-.venv\Scripts\python.exe -m vrpbench.cli --config experiments/pvrp_smoke.yaml
-
-# SDVRP smoke - two AASA reductions and native Alkaid on representative R1 instances
-.venv\Scripts\python.exe -m vrpbench.cli --config experiments/sdvrp_smoke.yaml
-
-# Full benchmark â€” all four solvers on the standard CVRP X-set + Solomon VRPTW set
-.venv\Scripts\python.exe -m vrpbench.cli --config experiments/benchmark.yaml
-
-# Run cells in parallel across 4 worker processes (~4Ã— faster on a 4-core machine)
-.venv\Scripts\python.exe -m vrpbench.cli --config experiments/sdvrp_smoke.yaml --threads 4
-```
-
-Results are appended incrementally to `results/results.csv` (one row per run). Re-running
-the same config **resumes** by default: cells already in the CSV are skipped (see below).
-
-### Running all benchmarks (Linux)
-
-`run_all_benchmarks.sh` runs all five full-benchmark configs sequentially â€” CVRP/VRPTW,
-VRPMPD, SDVRP, PVRP, and MDVRP â€” in a single invocation. Because every config appends to
-the same `results/results.csv`, the configs must run sequentially; `--threads` controls
-intra-experiment parallelism (cells within one config solved concurrently).
+The commands below assume the virtual environment is active. On Windows, `python` then means `.venv\Scripts\python.exe`. On Linux and macOS it means `.venv/bin/python`.
 
 ```bash
-# One-time: make the script executable (required after cloning on Linux/macOS)
-chmod +x run_all_benchmarks.sh
+# CVRP and VRPTW, one small instance each, PyVRP and OR-Tools
+python -m vrpbench.cli --config experiments/smoke.yaml
 
-# Use all available cores (detected via nproc)
-./run_all_benchmarks.sh
+# Multi-depot, PyVRP + OR-Tools + VROOM
+python -m vrpbench.cli --config experiments/mdvrp_smoke.yaml
 
-# Explicit thread count
+# Mixed pickup and delivery
+python -m vrpbench.cli --config experiments/vrpmpd_smoke.yaml
+
+# Periodic VRP
+python -m vrpbench.cli --config experiments/pvrp_smoke.yaml
+
+# Split delivery on representative DIMACS R1 instances
+python -m vrpbench.cli --config experiments/sdvrp_smoke.yaml
+```
+
+Full configs, ten seeds and a 10-second budget per cell, live next to the smoke files:
+
+| Config | What it runs |
+| --- | --- |
+| `experiments/benchmark.yaml` | CVRP X-set and Solomon VRPTW. PyVRP, OR-Tools, VROOM, VRPSolverEasy. |
+| `experiments/mdvrp_benchmark.yaml` | Cordeau MDVRP. PyVRP, OR-Tools, VROOM. |
+| `experiments/vrpmpd_benchmark.yaml` | Salhi–Nagy mixed pickup and delivery. |
+| `experiments/pvrp_benchmark.yaml` | Cordeau periodic instances. |
+| `experiments/sdvrp_benchmark.yaml` | All 95 DIMACS R1 instances. AASA-PyVRP, AASA-VROOM, Alkaid. |
+
+Each full config appends to the same `results/results.csv`, so run them one after another. On Linux and macOS, `run_all_benchmarks.sh` does that in the order above.
+
+```bash
+chmod +x run_all_benchmarks.sh          # once, after cloning
+./run_all_benchmarks.sh                 # Linux: one worker per core
 ./run_all_benchmarks.sh --threads 8
-
-# Re-run every cell, ignoring previously recorded results
-./run_all_benchmarks.sh --force
-
-# Both flags together
 ./run_all_benchmarks.sh --threads 8 --force
 ```
 
-The script auto-detects the Python interpreter (`.venv/bin/python` â†’ `python3` â†’ `python`),
-prints a timestamped header per config, and exits non-zero if any config fails (listing
-which ones).
+On macOS, pass `--threads` (see [Installation](#macos)). The script looks for `.venv/bin/python`, then `python3`, then `python`, prints a timestamped header per config, and exits non-zero if any config fails.
 
-### Resume (skip already-done cells)
-
-Every run reads `results/results.csv` at startup and skips any cell already recorded there,
-so an interrupted batch can simply be re-launched to finish the remaining work â€” no
-recomputation of finished cells.
+On Windows PowerShell, the same sequence is:
 
 ```powershell
-# First launch solves the whole grid; if interrupted, just run the same command again â€”
-# it picks up only the cells that have no row yet.
-.venv\Scripts\python.exe -m vrpbench.cli --config experiments/benchmark.yaml --threads 8
-
-# Force a full re-run, ignoring existing rows (--no-resume is an alias):
-.venv\Scripts\python.exe -m vrpbench.cli --config experiments/benchmark.yaml --force
+$py = ".\.venv\Scripts\python.exe"
+& $py -m vrpbench.cli --config experiments/benchmark.yaml --threads 8
+& $py -m vrpbench.cli --config experiments/vrpmpd_benchmark.yaml --threads 8
+& $py -m vrpbench.cli --config experiments/sdvrp_benchmark.yaml --threads 8
+& $py -m vrpbench.cli --config experiments/pvrp_benchmark.yaml --threads 8
+& $py -m vrpbench.cli --config experiments/mdvrp_benchmark.yaml --threads 8
 ```
 
-- A cell is identified by `(run_id, instance_name, variant, solver, seed)` â€” `solver_version`
-  and `time_budget_s` are **not** part of the key. Results from a different `run_id` never
-  block cells in the current experiment.
-- A cell counts as done if it has **any** row (`ok`, `infeasible`, **or `error`**). To retry
-  an `error` cell, re-run with `--force` or delete its row from the CSV.
-- The startup line reports what was skipped, e.g.
-  `Resume: 1430/1600 cells already in results/results.csv; running 170 remaining.`
-- `--force` (alias `--no-resume`) **appends** a fresh set of rows; it does not truncate the
-  CSV. To start completely clean, point `results_dir` at a new folder or delete the CSV.
+## Results, resume, and parallel runs
 
-### Parallel execution (`--threads N`)
+Each finished cell appends one row to `results/results.csv`. A crash keeps every row already written. The columns that matter for a comparison are:
 
-The experiment grid (`instance Ã— solver Ã— seed`) is **embarrassingly parallel**: each cell is
-independent. Pass `--threads N` (alias `-j N`) to run up to `N` cells simultaneously across
-worker processes, cutting wall-clock time roughly NÃ— on a multi-core machine.
+| Column | Meaning |
+| --- | --- |
+| `status` | `ok`, `infeasible`, or `error`. |
+| `objective` | Distance recomputed by the harness. |
+| `gap_pct` | Gap to the best-known value, when one is on file. |
+| `feasible` | Whether the independent checks passed. |
+| `runtime_s` | Wall-clock time of that solve. |
+| `num_vehicles` | Routes used. |
+| `obj_mismatch` | Solver-reported cost minus the recomputed cost. |
+| `error` | Exception text when `status` is `error`. |
 
-```powershell
-.venv\Scripts\python.exe -m vrpbench.cli --config experiments/benchmark.yaml --threads 8
+Set `store_detail: true` in the YAML to also write per-run JSON, including routes, under the results directory.
+
+### Resume
+
+A second launch of the same config reads the CSV and skips cells that already have a row.
+
+```bash
+python -m vrpbench.cli --config experiments/benchmark.yaml --threads 8
 ```
 
-- **Default is `--threads 1`** â€” the original sequential loop, byte-identical to previous behaviour.
-- The time budget per cell is **unchanged**: each worker runs on its own core and receives the
-  full `time_budget_s`. Keep `N â‰¤ physical cores` to avoid contention (the CLI warns if you exceed `os.cpu_count()`).
-- Result rows land in the CSV in **completion order** (not grid order) when `N > 1`; the set of
-  rows is identical to a sequential run.
-- A solve exception in one cell is captured as `status=error` and never aborts the batch â€”
-  the same guarantee as the sequential mode.
+The startup line reports the skip, for example: `Resume: 1430/1600 cells already in results/results.csv; running 170 remaining.`
 
-## Reporting (DOCX)
+A cell is the tuple `(run_id, instance_name, variant, solver, seed)`. Solver version and time budget are not part of the key, and a row from another `run_id` does not block the current experiment. Any status counts as done, including `error`. To solve a cell again, pass `--force` (alias `--no-resume`) or delete its row. `--force` appends new rows; it does not clear the file. To start from an empty table, point `results_dir` at a new folder or delete the CSV.
 
-Two standalone scripts under `scripts/` turn `results/results.csv` into a formatted Word
-report comparing every solver across all six variants:
+### Parallel cells
 
-1. `scripts/aggregate.py` reads `results/results.csv` and writes `results/table_data.json`,
-   reducing each `(instance, solver)` cell over its seeds to the mean objective, gap (CVRP
-   only), runtime, and vehicle count over the `ok` runs, plus an `n_ok/n_total` success
-   string. Instance names are normalised (path/extension stripped) so the clean and
-   path-form duplicates a resumed run can leave in the CSV merge into one row.
-2. `scripts/generate_report.py` reads that JSON and writes
-   `results/vrp_benchmark_report.docx`.
+`--threads N` (alias `-j N`) runs up to `N` cells at once, each in its own process. The default is `1`.
 
-Reporting needs **`python-docx`** (`pandas` is already a harness dependency):
-
-```powershell
-.venv\Scripts\python.exe -m pip install python-docx
-.venv\Scripts\python.exe scripts/aggregate.py
-.venv\Scripts\python.exe scripts/generate_report.py
+```bash
+python -m vrpbench.cli --config experiments/benchmark.yaml --threads 8
 ```
 
-The report is one **landscape-A4 table per variant** (CVRP, VRPTW, MDVRP, VRPMPD, SDVRP,
-PVRP) preceded by a cover page. Each table groups its columns by solver, and the grouping
-is made visually explicit:
+Each worker still receives the full `time_budget_s`. Keep `N` at or below the number of physical cores; the CLI warns when `N` exceeds `os.cpu_count()`. With more than one thread, rows arrive in completion order. The set of rows matches a sequential run. An exception in one cell is stored as `status=error` and the rest of the grid continues.
 
-- **Thick navy group-boundary lines** separate each solver's column block (and the
-  *Instance Features* block) from its neighbours, while thin gray lines divide the metric
-  columns *inside* a block.
-- **Per-solver colour coding** in the header bands â€” each solver keeps a consistent hue
-  across every table (PyVRP = blue, OR-Tools = orange, VROOM = green, VRPSolverEasy =
-  purple, Tabu Search = red).
-- **Best-value highlighting** â€” in each row the minimum of every comparable metric
-  (objective, gap, time, vehicles) is shown in bold, shaded with a lighter tint of that
-  solver's group colour. An em-dash (`â€”`) marks cells with no successful run, and the
-  `Success` column reports successful runs out of the seed count.
+## Reports
 
-Re-run `aggregate.py` then `generate_report.py` whenever `results/results.csv` changes;
-both outputs land in `results/`.
+`python-docx` is installed with the harness. Two scripts turn the CSV into a landscape A4 Word report, one table per variant:
 
-## Experiment config (YAML)
+```bash
+python scripts/aggregate.py
+python scripts/generate_report.py
+```
+
+`scripts/aggregate.py` reads `results/results.csv` and writes `results/table_data.json`. For each instance and solver it averages objective, gap, runtime, and vehicle count over the seeds whose status is `ok`, and records how many of those seeds succeeded. Instance names are normalised so a path and a bare filename for the same file collapse to one row.
+
+`scripts/generate_report.py` reads that JSON and writes `results/vrp_benchmark_report.docx`. Solver groups are separated by a heavy rule and a stable colour (PyVRP blue, OR-Tools orange, VROOM green, VRPSolverEasy purple, Alkaid red). In each row the best value of a comparable metric is set in bold on a lighter tint of that solver's colour. An em dash marks a solver with no successful run.
+
+Run the two scripts again after the CSV changes. Both outputs stay in `results/`.
+
+## Experiment configuration
 
 ```yaml
-run_id: baseline          # optional; default = timestamp
-seeds: [0, 1, 2]          # one run per seed
+run_id: baseline          # optional; default is a timestamp
+seeds: [0, 1, 2]          # one cell per seed
 time_budget:
-  base_s: 10              # wall-clock budget per instance ...
-  per_node_ms: 0          # ... + this many ms per node (0 = flat budget)
+  base_s: 10              # seconds per cell
+  per_node_ms: 0          # extra milliseconds per node; 0 keeps the budget flat
 solvers: [pyvrp, ortools, vroom, vrpsolvereasy]
-store_detail: false       # also dump per-run JSON (routes + metadata)
+store_detail: false       # true also writes per-run JSON
+results_dir: results
 datasets:
   - variant: CVRP
     instances:
@@ -185,156 +381,89 @@ datasets:
   - variant: VRPTW
     instances:
       - data/instances/Solomon/C101.txt
-  - variant: MDVRP            # multi-depot; must be declared explicitly (see note)
+  - variant: MDVRP         # required: these files share the .txt extension with Solomon
     instances:
       - data/instances/MDVRP/old/p01.txt
-  - variant: VRPMPD           # mixed pickup & delivery; inferred from .vrpmpd extension
+  - variant: VRPMPD        # also inferred from the .vrpmpd extension
     instances:
       - data/instances/S/CMT01H.vrpmpd
-  - variant: PVRP             # periodic VRP; must be declared explicitly (see note)
+  - variant: PVRP          # required, same reason as MDVRP
     instances:
       - data/instances/PVRP/old/p01.txt
-  - variant: SDVRP            # Split Delivery VRP R1
+  - variant: SDVRP
     instances:
       - data/instances/SDVRP_R1_instances/SET-1/SD1.txt
 ```
 
-> **MDVRP and PVRP files share the `.txt` extension with Solomon VRPTW**, so declare
-> `variant: MDVRP` or `variant: PVRP` explicitly. SDVRP R1 is detected from `.sd`, `.cri`,
-> or R1-shaped `.txt` files, and explicit `variant: SDVRP` is also accepted.
-> `vrpsolvereasy` cannot be listed under an MDVRP, VRPMPD, PVRP, or SDVRP group (config
-> validation rejects it with a clear error). PVRP solvers must use the `pvrp_*` names
-> (`pvrp_pyvrp`, `pvrp_ortools`, `pvrp_vroom`) and SDVRP solvers must use
-> `aasa_pyvrp`, `aasa_vroom`, or `alkaid_sdvrp`; the plain
-> `pyvrp`/`ortools`/`vroom` names do not support PVRP or SDVRP.
->
-> **VRPMPD files use the unique `.vrpmpd` extension** â€” the variant is inferred automatically
-> and no explicit `variant:` declaration is needed (though it is accepted and validated).
+Declare `variant: MDVRP` or `variant: PVRP` on every `.txt` group of that kind. The extension is shared with Solomon VRPTW, so the extension alone is not enough. SDVRP R1 is recognised from `.sd`, `.cri`, and R1-shaped `.txt` files; writing `variant: SDVRP` is valid too.
 
-## Layout
-
-| Module | Responsibility |
-|---|---|
-| `vrpbench/core` | `Instance`, `Solution`, independent `evaluate` (objective recompute, feasibility, gap) |
-| `vrpbench/datasets` | `loader` (CVRPLIB `.vrp` + Solomon/GH `.txt` via `vrplib`, Cordeau MDVRP/PVRP `.txt`, DIMACS SDVRP R1 `.txt`/`.sd`/`.cri`, Salhi-Nagy `.vrpmpd`), curated `bks` table |
-| `vrpbench/solvers` | `Solver` protocol + `pyvrp` / `ortools` / `vroom` / `vrpsolvereasy` adapters + `pvrp_solver` ALNS wrapper + shared `aasa_solver` + external `alkaid_solver` + `SOLVERS` registry |
-| `vrpbench/runner` | YAML `config` + execution loop (parallel `--threads`, resume / `--force`) |
-| `vrpbench/results` | incremental CSV store (+ optional per-run JSON) |
+`vrpsolvereasy` is rejected if it appears in an MDVRP, VRPMPD, PVRP, or SDVRP group. Periodic instances take the names `pvrp_pyvrp`, `pvrp_ortools`, and `pvrp_vroom`. Split-delivery instances take `aasa_pyvrp`, `aasa_vroom`, and `alkaid_sdvrp`. The plain names `pyvrp`, `ortools`, and `vroom` are the single-period solvers.
 
 ## Solvers
 
-| Name | Type | CVRP | VRPTW | MDVRP | VRPMPD | PVRP | SDVRP | Notes |
-|---|---|---|---|---|---|---|---|---|
-| `pyvrp` | Heuristic (LNS) | âœ“ | âœ“ | âœ“ | âœ“ | âœ— | âœ— | |
-| `ortools` | Heuristic (CP-SAT/LNS) | âœ“ | âœ“ | âœ“ | âœ“ | âœ— | âœ— | |
-| `vroom` | Heuristic (LNS) | âœ“ | âœ“ | âœ“ | âœ“ | âœ— | âœ— | Windows: numpy `uintc` workaround applied |
-| `vrpsolvereasy` | Exact (BCP / BaPCod) | âœ“ | âœ“ | âœ— | âœ— | âœ— | âœ— | Requires BaPCod binaries; â‰¤ 1022 nodes; needs long time budgets (see below) |
-| `pvrp_pyvrp` | ALNS wrapper (PyVRP inner) | âœ— | âœ— | âœ— | âœ— | âœ“ | âœ— | |
-| `pvrp_ortools` | ALNS wrapper (OR-Tools inner) | âœ— | âœ— | âœ— | âœ— | âœ“ | âœ— | |
-| `pvrp_vroom` | ALNS wrapper (VROOM inner) | âœ— | âœ— | âœ— | âœ— | âœ“ | âœ— | |
-| `aasa_pyvrp` | AASA reduction + PyVRP | âœ— | âœ— | âœ— | âœ— | âœ— | âœ“ | Fixed `p=2`, two-level demand discretisation |
-| `aasa_vroom` | AASA reduction + VROOM | âœ— | âœ— | âœ— | âœ— | âœ— | âœ“ | VROOM currently ignores `seed` |
-| `alkaid_sdvrp` | Native Alkaid-SDVRP ILS/RVND | âœ— | âœ— | âœ— | âœ— | âœ— | âœ“ | Requires external v1.1 executable; see `ALKAID_SETUP.md` |
+| Name | Method | CVRP | VRPTW | MDVRP | VRPMPD | PVRP | SDVRP |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `pyvrp` | Heuristic, large neighbourhood search | yes | yes | yes | yes |  |  |
+| `ortools` | Heuristic, OR-Tools routing | yes | yes | yes | yes |  |  |
+| `vroom` | Heuristic, large neighbourhood search | yes | yes | yes | yes |  |  |
+| `vrpsolvereasy` | Exact branch-and-cut-and-price (BaPCod) | yes | yes |  |  |  |  |
+| `pvrp_pyvrp` | ALNS over day patterns, PyVRP each day |  |  |  |  | yes |  |
+| `pvrp_ortools` | ALNS over day patterns, OR-Tools each day |  |  |  |  | yes |  |
+| `pvrp_vroom` | ALNS over day patterns, VROOM each day |  |  |  |  | yes |  |
+| `aasa_pyvrp` | AASA split into a CVRP, then PyVRP |  |  |  |  |  | yes |
+| `aasa_vroom` | AASA split into a CVRP, then VROOM |  |  |  |  |  | yes |
+| `alkaid_sdvrp` | Native Alkaid-SDVRP ILS/RVND |  |  |  |  |  | yes |
 
-All three heuristic solvers handle multiple depots **natively** (PyVRP per-depot vehicle
-types, OR-Tools per-vehicle `starts`/`ends`, VROOM per-vehicle `start`/`end`). MDVRP uses
-classic *open* depot assignment â€” the solver chooses which depot serves each customer.
+OR-Tools ignores the seed. VROOM's AASA wrapper currently ignores the seed as well. `vrpsolvereasy` needs the BaPCod library, accepts instances of at most 1022 nodes, and is only informative when the time budget is long enough for an exact method.
 
-For **VRPMPD**, PyVRP and VROOM enforce the position-dependent load constraint natively
-(each `Client`/`Job` carries both `delivery` and `pickup` amounts). OR-Tools uses a
-two-dimension model (`Deliveries` + `Load` dimensions linked per vehicle) to replicate
-the same constraint. All three use a large per-vehicle fixed cost to implement the
-lexicographic two-stage objective (minimize vehicles first, then distance).
+**MDVRP.** PyVRP, OR-Tools, and VROOM all model several depots directly: PyVRP with one vehicle type per depot, OR-Tools with a start and end index per vehicle, and VROOM with a start and end index per vehicle. Assignment is open. The per-depot route-duration field in the Cordeau files is ignored, so every solver runs the capacity-only problem. Each depot is given as many vehicles as there are customers; a good solution uses far fewer.
 
-For **PVRP**, none of the base solvers natively support periodic routing, so all three are
-driven through a shared `PVRPSolver` ALNS wrapper. The outer loop searches over
-per-customer day-combination assignments (bitmasks encoding which of the `t` days each
-customer is visited); for each candidate assignment the inner base solver routes each day
-independently as a CVRP (old dataset, no duration limit) or VRPTW (new dataset, with a
-per-route duration limit) sub-instance with a hard fleet cap of `m` vehicles/day. The
-reported objective is the total travel distance summed across all `t` days; day-route
-solutions are re-evaluated against the authoritative distance matrix so `obj_mismatch â‰ˆ 0`.
+**VRPMPD.** PyVRP and VROOM carry both a delivery amount and a pickup amount on each stop. OR-Tools uses two routing dimensions that together enforce the same load walk. All three add a large fixed cost per vehicle so the search prefers fewer vehicles first and shorter distance second. The adapter removes that fixed cost before it reports an objective, which keeps `obj_mismatch` near zero.
 
-For **SDVRP**, the harness targets the DIMACS R1 Split Delivery VRP benchmark:
-homogeneous capacity, explicit split-delivery quantities, no site-dependent vehicle
-types, no route-duration fields, and no hard fleet cap. `aasa_pyvrp` and
-`aasa_vroom` apply the A Priori Adaptive Splitting Algorithm with fixed `p=2` and
-two distance levels, then solve the resulting colocated-fragment CVRP through the
-existing adapters. This restricts delivered quantities to generated fragments and is
-therefore an approximation of the full split space; these combinations are valid uses
-of AASA's generic CVRP transformation, not reproductions of the paper's VRPH results.
-`alkaid_sdvrp` passes the original R1 file directly to native Alkaid without AASA.
-All decoded solutions carry `route_deliveries`, and objectives are recomputed from the
-authoritative integer-rounded distance matrix so `obj_mismatch` is near zero.
-## Datasets & BKS
+**PVRP.** The three `pvrp_*` solvers share one ALNS wrapper. The outer search assigns each customer a legal day combination. The inner solver then routes each day on its own, as a CVRP when the instance has no duration limit and as a VRPTW when it does, with at most `m` vehicles that day. The recorded objective is total distance over all days.
 
-Place instance files under `data/instances/`:
+**SDVRP.** The target is DIMACS R1: one capacity, integer demands, explicit split quantities, no site-dependent fleet, no route-duration limit, and no hard cap on the number of vehicles. `aasa_pyvrp` and `aasa_vroom` build a CVRP of colocated fragments with fixed split parameter `p = 2` and two demand levels, then call the existing adapter. Delivered quantities are restricted to those fragments, so this is an approximation of the full split space. `alkaid_sdvrp` sends the original R1 file to Alkaid and does not use that reduction. Every accepted solution carries `route_deliveries`.
 
-- **CVRP** â€” CVRPLIB X-set (`data/instances/X/`, `.vrp`, EUC_2D, integer-rounded
-  distances). 150+ instances with BKS from Uchoa et al. 2017.
-- **VRPTW** â€” Solomon benchmark (`data/instances/Solomon/`, `.txt`, float Euclidean
-  distances). Complete 100-customer set (C1/C2/R1/R2/RC1/RC2 classes).
-- **MDVRP** â€” Cordeau benchmark (`data/instances/MDVRP/`, `.txt`,
-  [source](http://neumann.hec.ca/chairedistributique/data/)): `old/p01..p21` (integer
-  coords) and `new/pr01..pr10` (float coords). Euclidean distances are nearest-integer
-  rounded (matching the CVRP convention). The per-depot max-route-duration field is
-  ignored (solved as capacity-constrained MDVRP); per-customer PVRP visit-frequency fields
-  are discarded.
-- **VRPMPD** â€” Salhiâ€“Nagy "S" benchmark (`data/instances/S/`, `.vrpmpd`,
-  [source](http://webhotel4.ruc.dk/~keld/research/LKH-3/)): ~70 instances
-  (`CMT01â€“CMT14` with `H/Q/T/X/Y` variants, 50â€“199 customers). Euclidean distances are
-  nearest-integer rounded. Each customer is either a pure delivery node (goods from depot
-  to customer) or a pure pickup node (goods from customer back to depot). The vehicle
-  departs the depot loaded with all of a route's deliveries; the load varies along the
-  route and must stay within capacity at **every stop** (position-dependent constraint).
-  Time windows in the instance files are ignored; the harness solves the capacity-only
-  variant. The objective is lexicographic: minimize number of vehicles first, then total
-  distance. No BKS are bundled â€” `gap_pct` is left blank for VRPMPD runs.
-- **PVRP** â€” Cordeau benchmark (`data/instances/PVRP/`, `.txt`,
-  [source](http://neumann.hec.ca/chairedistributique/data/)): 42 instances split into
-  two sets. Old set `old/p01â€“p32` (20â€“417 customers, `t âˆˆ {2,5,6,7,8,10}` periods, no
-  route-duration limit). New set `new/pr01â€“pr10` (48â€“288 customers, `t âˆˆ {4,6}` periods,
-  per-route duration limit 400â€“500). Each customer has a visit frequency `freq` (1â€“`t`)
-  and a list of allowed **combination codes** â€” bitmasks over the `t` days
-  (`popcount(code) == freq`) â€” specifying which subsets of days are valid visit patterns.
-  A hard per-day fleet cap `m` (1â€“12) limits routes per day; `m=1` instances (p03, p06,
-  p09) are the tightest. Euclidean distances are nearest-integer rounded. The objective is
-  total travel distance summed across all `t` days (single-stage, no vehicle-count term).
-  No BKS are bundled â€” `gap_pct` is left blank for PVRP runs.
-- **SDVRP** - DIMACS R1 Split Delivery VRP benchmark (`data/instances/SDVRP_R1_instances/`, `.txt`/`.sd`/`.cri`, [source](http://dimacs.rutgers.edu/index.php/programs/challenge/vrp/vrpsd/)): 95 instances across SET-1 (`SD*.txt`), SET-2 (`S*D*.sd`), SET-3 (`p*_*.cri`), and SET-4 (`eil*.sd`). The format is `n Q`, one demand line with `n` values, then `n+1` coordinate rows with the depot first. Distances use `floor(sqrt(dx^2 + dy^2) + 0.5)`. Official post-challenge BKS values are bundled, so `gap_pct` is reported for SDVRP runs.
+## Datasets and best-known solutions
 
-`data/bks.csv` (`instance_name, variant, bks_value, rounding, source`) holds curated
-best-known values for gap computation. The `rounding` column documents the distance
-convention each BKS was computed under (`int` for CVRP, `float`/1-decimal for VRPTW),
-kept consistent with the loader. Missing BKS â†’ `gap_pct` is left blank, not an error
-(MDVRP, VRPMPD, and PVRP BKS are not bundled; SDVRP R1 BKS values are bundled).
+Instance files live under `data/instances/`.
 
-## Correctness model
+- **CVRP.** CVRPLIB X-set in `data/instances/X/` (`.vrp`, Euclidean distance rounded to the nearest integer). Best-known values from Uchoa et al. 2017 are included.
+- **VRPTW.** Solomon 100-customer set in `data/instances/Solomon/` (`.txt`, classes C1, C2, R1, R2, RC1, RC2). Distance is raw Euclidean.
+- **MDVRP.** Cordeau instances in `data/instances/MDVRP/` ([source](http://neumann.hec.ca/chairedistributique/data/)): `old/` uses integer coordinates and `new/` uses floating-point coordinates. Distance is rounded to the nearest integer. Visit-frequency fields used by the periodic variant are discarded.
+- **VRPMPD.** Salhi–Nagy S instances in `data/instances/S/` (`.vrpmpd`, [source](http://webhotel4.ruc.dk/~keld/research/LKH-3/)). Each customer is a pure delivery or a pure pickup. The vehicle leaves the depot carrying every delivery on the route; the load then falls at deliveries and rises at pickups, and must stay inside capacity at every stop. Time windows in the files are ignored. The objective is lexicographic: fewer vehicles, then shorter distance. No best-known values are bundled, so `gap_pct` is empty.
+- **PVRP.** Cordeau instances in `data/instances/PVRP/` ([source](http://neumann.hec.ca/chairedistributique/data/)): `old/p01`–`p32` have no route-duration limit, and `new/pr01`–`pr10` have one. Each customer has a visit frequency and a list of allowed day combinations. At most `m` routes run on a given day. Distance is rounded to the nearest integer. The objective is total distance across days, with no vehicle-count term. No best-known values are bundled.
+- **SDVRP.** DIMACS R1 in `data/instances/SDVRP_R1_instances/` (`.txt`, `.sd`, `.cri`; [source](http://dimacs.rutgers.edu/programs/challenge/vrp/vrpsd)): 95 instances in four sets. The file is `n Q`, one line of `n` demands, then `n + 1` coordinate rows with the depot first. Distance is `floor(sqrt(dx² + dy²) + 0.5)`. Official best-known values are bundled, so `gap_pct` is filled in.
 
-Every solution is **independently re-scored** against the instance's authoritative
-distance matrix and re-checked for feasibility:
+`data/bks.csv` stores `instance_name`, `variant`, `bks_value`, `rounding`, and `source`. The `rounding` column records the convention the published value used (`int` for CVRP, float for VRPTW), and the loader follows that convention. A missing best-known value leaves `gap_pct` blank. That is the normal outcome for MDVRP, VRPMPD, and PVRP.
 
-- **CVRP / MDVRP** â€” visiting constraints and total route load â‰¤ capacity; MDVRP also
-  verifies each route names a valid depot it starts and ends at.
-- **VRPTW** â€” visiting constraints, load, and time-window compliance at every stop.
-- **VRPMPD** â€” visiting constraints and a position-dependent load walk: the vehicle
-  departs each route with load = Î£ deliveries, decrements at delivery stops, increments
-  at pickup stops, and the load must remain in `[0, capacity]` after every node.
-- **PVRP** â€” each route's assigned day (via `route_days`) is checked; per-customer
-  visit-day set must match exactly one allowed combination code; at most `m` routes per
-  day; per-route load â‰¤ capacity; (new set) per-route travel + service time â‰¤
-  `max_route_duration`. The objective is recomputed as the sum of all route distances
-  across all days from the authoritative matrix, so `obj_mismatch â‰ˆ 0` by construction.
-- **SDVRP** - `route_deliveries` is required and checked route by route. Delivery keys must match route customers, all delivered quantities must be positive, per-route load must not exceed homogeneous capacity, no depot or invalid node may appear inside a route, and each customer's delivered quantities must sum exactly to its demand. There is no site-dependency, vehicle-type, route-duration, or hard fleet-cap check for R1 SDVRP.
+## How solutions are checked
 
-The `obj_mismatch` column flags any disagreement between a solver's reported objective and
-the independent recompute (â‰ˆ0 for integer-distance variants; tiny for VRPTW). For VRPMPD
-each adapter strips the fixed vehicle cost from its own objective before reporting, so
-`obj_mismatch` stays â‰ˆ0 there too.
+Every solution is scored again from the instance distance matrix, then checked:
+
+- **CVRP and MDVRP.** Every customer is visited once, no depot appears inside a route, and route load is at most capacity. MDVRP also requires `route_depots` to name a real depot for each route, and the route is scored from that depot.
+- **VRPTW.** The CVRP checks, plus time-window compliance at every stop.
+- **VRPMPD.** Every customer is visited once. The load walk starts at the sum of deliveries on the route, drops at a delivery, rises at a pickup, and must stay inside `[0, capacity]` after every stop.
+- **PVRP.** Each route carries a day. The days a customer is visited must equal one allowed combination. At most `m` routes run per day. Route load is at most capacity. On the new set, travel plus service on a route stays within `max_route_duration`. Distance is summed across days from the harness matrix.
+- **SDVRP.** `route_deliveries` is required. Its keys match the customers on that route, every quantity is positive, route load is at most the single capacity, and the quantities delivered to a customer sum to that customer's demand.
+
+## Repository layout
+
+```text
+vrpbench/           harness packages (core, datasets, solvers, runner, results)
+web/                FastAPI service and the Vite studio
+experiments/        smoke and full YAML configs
+data/instances/     benchmark files
+data/bks.csv        best-known values
+scripts/            aggregate.py and generate_report.py
+tests/              pytest suite
+results/            created when a benchmark runs
+```
 
 ## Tests
 
-```powershell
-.venv\Scripts\python.exe -m pytest -q
+```bash
+python -m pytest -q
 ```
 
+Tests that need the BaPCod library, or a live Alkaid executable, are skipped when that binary is absent, so the default suite stays green. The smoke configs under `experiments/*_smoke.yaml` are the short end-to-end check once the install above succeeds.

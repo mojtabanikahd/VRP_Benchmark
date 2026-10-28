@@ -1,39 +1,91 @@
 # VRP Route Studio
 
-The web app is an interactive front end for the solvers in this repository. It has two screens:
+**English** · [فارسی](README.fa.md)
 
-- **Studio** builds a CVRP, VRPTW, or MDVRP scenario on a Euclidean plane, or loads a benchmark file, then solves it.
-- **Fueling** is a single-depot VRPTW for refueling machines. Depots and machines sit on an OpenStreetMap, distances are real driving distances, and each solved tanker route is drawn along the streets it must drive.
+Interactive front end for the solvers in [vrpbench](../README.md). The browser edits a scenario. A small FastAPI service turns that scenario into a `vrpbench` instance, runs the chosen solver, and returns a solution the harness has checked itself.
 
-The browser talks to a small FastAPI service. That service turns the scenario into a `vrpbench` instance and runs the chosen solver.
+Two screens share one window:
+
+| Screen | What it solves | Where the points live |
+| --- | --- | --- |
+| **Studio** | CVRP, VRPTW, or MDVRP | A flat Euclidean plane. You can also load a benchmark file. |
+| **Fueling** | One-depot VRPTW for refueling machines | An OpenStreetMap. Distance and travel time come from the road network, and each solved route is drawn along the streets. |
+
+Studio stays English and left-to-right. Fueling is Persian, right-to-left, and set in Vazirmatn. Its map stays left-to-right so Leaflet pan and zoom keep working. Each screen keeps its own scenario while you switch.
 
 ## Requirements
 
-- Python 3.11 or newer, with this repository installed and the `web` extra (FastAPI and Uvicorn).
-- Node.js 20 or newer, for the Vite frontend.
-- A network connection. Studio can solve offline once the solvers are installed. Fueling loads OpenStreetMap tiles, looks up a typed address through the public Nominatim service, and, by default, asks the public OSRM demo server for driving distances and street geometry.
+Install the harness first, from the repository root, using the guide for your operating system in the [main README](../README.md#installation) ([فارسی](../README.fa.md#نصب)). Then add the pieces this app needs:
 
-## Launch
+| Requirement | Version | Role |
+| --- | --- | --- |
+| Python | 3.11 or newer | Already required by vrpbench. |
+| `web` extra | FastAPI, Uvicorn, python-multipart | The API in `web/api`. |
+| Node.js | 20 or newer | The Vite frontend in `web/app`. |
+| npm | Comes with Node.js | Installs the frontend once. |
+| Network | While using Fueling | Map tiles, address search, and driving distances. |
 
-Install the Python package from the repository root. If you already installed `vrpbench` for benchmarking, install the web extra into the same environment:
+Studio can solve offline once the solvers are installed. Fueling loads tiles from OpenStreetMap, looks up a typed address through the public Nominatim service, and by default asks the public OSRM demo server for driving distances and street geometry.
 
-```powershell
-python -m venv .venv
-.venv\Scripts\python.exe -m pip install -e ".[web]"
+## Installation
+
+Run the Python commands from the **repository root** (the directory that contains `pyproject.toml`). Run the npm command from `web/app`. If `vrpbench` is already installed in `.venv`, reuse that environment and only add the `web` extra.
+
+Confirm Node.js before the frontend install:
+
+```bash
+node --version
 ```
 
-Install the frontend once:
+The number must be 20 or newer. Current installers: [nodejs.org](https://nodejs.org/), `winget install OpenJS.NodeJS.LTS` on Windows, the NodeSource or distribution package on Linux, and `brew install node` on macOS.
+
+### Windows
+
+PowerShell, from the repository root. Reuse the virtual environment from the harness install:
 
 ```powershell
+.\.venv\Scripts\python.exe -m pip install -e ".[web]"
 cd web\app
 npm install
 ```
 
-Start the API and the frontend in two terminals. The API must be running before you solve; the page can open without it, but the solver list stays empty.
+The quotes around `".[web]"` are required. PowerShell treats square brackets as wildcards.
+
+If the virtual environment does not exist yet, create it first with the [Windows steps](../README.md#windows) in the main README, then run the two commands above.
+
+### Linux
+
+```bash
+source .venv/bin/activate
+python -m pip install -e ".[web]"
+cd web/app
+npm install
+```
+
+Create the virtual environment first when it is missing: [Linux steps](../README.md#linux).
+
+### macOS
+
+```bash
+source .venv/bin/activate
+python -m pip install -e ".[web]"
+cd web/app
+npm install
+```
+
+Create the virtual environment first when it is missing: [macOS steps](../README.md#macos). Use a Node.js 20+ from Homebrew or nodejs.org, not an older copy that may already be on `PATH`.
+
+## Launch
+
+The API and the frontend are two processes. Start the API before you solve. The page opens without it, but the solver list stays empty until the API answers.
+
+Vite proxies `/api` to `http://127.0.0.1:8000`. Leave the API on that address unless you change `web/app/vite.config.ts` to match.
+
+### Windows
 
 ```powershell
-# Terminal 1, from the repository root
-.venv\Scripts\python.exe -m uvicorn web.api.main:app --host 127.0.0.1 --port 8000
+# Terminal 1, repository root
+.\.venv\Scripts\python.exe -m uvicorn web.api.main:app --host 127.0.0.1 --port 8000
 ```
 
 ```powershell
@@ -42,17 +94,28 @@ cd web\app
 npm run dev -- --host 127.0.0.1 --port 5173
 ```
 
-Open [http://127.0.0.1:5173](http://127.0.0.1:5173). The top bar switches between **Studio** and **سوخت‌رسانی** (Fueling). Studio stays English and left-to-right. Fueling is Persian, right-to-left, and set in Vazirmatn; its map stays left-to-right so Leaflet pan and zoom keep working. Each screen keeps its own scenario while you switch.
+### Linux and macOS
 
-Vite proxies `/api` to `http://127.0.0.1:8000`. Leave the API on that address unless you change `web/app/vite.config.ts` to match.
+```bash
+# Terminal 1, repository root, with the virtual environment active
+python -m uvicorn web.api.main:app --host 127.0.0.1 --port 8000
+```
+
+```bash
+# Terminal 2
+cd web/app
+npm run dev -- --host 127.0.0.1 --port 5173
+```
+
+Open [http://127.0.0.1:5173](http://127.0.0.1:5173). The top bar switches between **Studio** and **سوخت‌رسانی** (Fueling).
 
 ## Studio
 
-Studio edits a scenario on a flat plane. Coordinates are abstract; distance is Euclidean, matching the benchmark loaders (nearest-integer for CVRP and MDVRP, raw Euclidean for VRPTW).
+Studio edits a scenario on a flat plane. Coordinates are abstract. Distance is Euclidean and matches the benchmark loaders: nearest-integer for CVRP and MDVRP, raw Euclidean for VRPTW.
 
 1. Name the scenario.
 2. Choose **CVRP**, **VRPTW**, or **MDVRP**.
-3. Choose a solver. CVRP and VRPTW list PyVRP, OR-Tools, VROOM, and VRPSolverEasy. MDVRP lists PyVRP, OR-Tools, and VROOM.
+3. Choose a solver. CVRP and VRPTW list PyVRP, OR-Tools, VROOM, and VRPSolverEasy. MDVRP lists PyVRP, OR-Tools, and VROOM. A VRPSolverEasy solve needs the [BaPCod library](../BAPCOD_SETUP.md).
 4. Set the vehicle capacity, the solve time budget (1–60 seconds), and the random seed. OR-Tools ignores the seed.
 5. Click the plane to add a customer. Drag a point to move it. Click a point and edit it in **Inspector**, or review every point under **Nodes**.
 6. Press **Delete** or **Backspace** to remove the selected customer. The last depot cannot be removed. MDVRP keeps at least two depots; use **Add depot** for more.
